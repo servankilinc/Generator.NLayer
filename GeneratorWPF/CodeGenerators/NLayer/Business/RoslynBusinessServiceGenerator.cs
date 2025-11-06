@@ -125,6 +125,13 @@ public partial class RoslynBusinessServiceGenerator
         methodList.Add(GeneratorDeleteMethodOfAbstract(deleteArgType, isThereDeleteDto, uniqueFields));
         #endregion
 
+        #region UndoDelete
+        if(entity.SoftDeletable == true)
+        {
+            methodList.Add(GeneratorUndoDeleteMethodOfAbstract(entity.Name, uniqueFields));
+        }
+        #endregion
+
         #region Datatable Methods
         methodList.Add(GeneratorDatatableClientSideMethodOfAbstract(entity.Name));
         methodList.Add(GeneratorDatatableServerSideMethodOfAbstract(entity.Name));
@@ -280,6 +287,13 @@ public partial class RoslynBusinessServiceGenerator
 
         #region Delete
         methodList.Add(GeneratorDeleteMethodOfConcrete(entity, dtos, uniqueFields));
+        #endregion
+
+        #region UndoDelete
+        if (entity.SoftDeletable == true)
+        {
+            methodList.Add(GeneratorUndoDeleteMethodOfConcrete(entity, uniqueFields));
+        }
         #endregion
 
         #region Datatable Methods
@@ -1275,6 +1289,29 @@ public partial class RoslynBusinessServiceGenerator
 
         return SyntaxFactory
             .MethodDeclaration(SyntaxFactory.ParseTypeName($"Task"), SyntaxFactory.Identifier("DeleteAsync"))
+            .AddParameterListParameters(paramList.ToArray())
+            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+    }
+
+    private MethodDeclarationSyntax GeneratorUndoDeleteMethodOfAbstract(string retrunName, List<Field> uniqueFields)
+    {
+        var paramList = new List<ParameterSyntax>();
+        foreach (var field in uniqueFields)
+        {
+            paramList.Add(
+                SyntaxFactory.Parameter(SyntaxFactory.Identifier(field.Name.ToCamelCase()))
+                    .WithType(SyntaxFactory.IdentifierName(field.GetMapedTypeName()))
+            );
+        }
+        paramList.Add(
+            SyntaxFactory.Parameter(SyntaxFactory.Identifier("cancellationToken"))
+            .WithType(SyntaxFactory.IdentifierName("CancellationToken"))
+            .WithDefault(SyntaxFactory.EqualsValueClause(
+                SyntaxFactory.LiteralExpression(SyntaxKind.DefaultLiteralExpression, SyntaxFactory.Token(SyntaxKind.DefaultKeyword))
+            )
+        ));
+        return SyntaxFactory
+            .MethodDeclaration(SyntaxFactory.ParseTypeName($"Task<{retrunName}>"), SyntaxFactory.Identifier("UndoDeleteAsync"))
             .AddParameterListParameters(paramList.ToArray())
             .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
     }
@@ -2600,6 +2637,84 @@ public partial class RoslynBusinessServiceGenerator
         }
     }
 
+    private MethodDeclarationSyntax GeneratorUndoDeleteMethodOfConcrete(Entity entity, List<Field> uniqueFields)
+    {
+        // 1) Parameter List
+        var paramList = new List<ParameterSyntax>();
+        foreach (var field in uniqueFields)
+        {
+            paramList.Add(
+                SyntaxFactory.Parameter(SyntaxFactory.Identifier(field.Name.ToCamelCase()))
+                    .WithType(SyntaxFactory.IdentifierName(field.GetMapedTypeName()))
+            );
+        }
+        paramList.Add(
+            SyntaxFactory.Parameter(SyntaxFactory.Identifier("cancellationToken"))
+                .WithType(SyntaxFactory.IdentifierName("CancellationToken"))
+                .WithDefault(SyntaxFactory.EqualsValueClause(
+                    SyntaxFactory.LiteralExpression(SyntaxKind.DefaultLiteralExpression, SyntaxFactory.Token(SyntaxKind.DefaultKeyword))
+                )
+            )
+        );
+
+        // 2) If Statements
+        List<IfStatementSyntax> ifStatements = new(); 
+        foreach (var field in uniqueFields)
+        {
+            ifStatements.Add(CreateIfDefaultCheckCondition(field.Name.ToCamelCase()));
+        } 
+
+        // 3) Arguments of method call
+        var arguments = new List<ArgumentSyntax>
+        {
+            CreateWhereRule(uniqueFields, null),
+            SyntaxFactory.Argument(SyntaxFactory.IdentifierName("cancellationToken"))
+                .WithNameColon(SyntaxFactory.NameColon(SyntaxFactory.IdentifierName("cancellationToken")))
+        };
+
+
+        // 4) Method Call
+        var awaitInvocation =
+            SyntaxFactory.AwaitExpression(
+                SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.IdentifierName("_UndoDeleteAsync")
+                )
+                .AddArgumentListArguments(arguments.ToArray())
+            );
+
+        // 5) Method Call Decleration by Result
+        var methodCallDecleration = SyntaxFactory.LocalDeclarationStatement(
+            SyntaxFactory.VariableDeclaration(SyntaxFactory.IdentifierName("var"))
+                .WithVariables(
+                    SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.VariableDeclarator(SyntaxFactory.Identifier("result"))
+                            .WithInitializer(SyntaxFactory.EqualsValueClause(awaitInvocation))
+                    )
+                )
+            );
+
+        // 6) Return Statement
+        var returnStatement = SyntaxFactory.ReturnStatement(SyntaxFactory.IdentifierName("result"));
+
+        // 7) Method Decleration
+        var bodyStatements = new List<StatementSyntax>();
+        bodyStatements.AddRange(ifStatements);
+        bodyStatements.Add(methodCallDecleration);
+        bodyStatements.Add(returnStatement);
+        
+        // 8) Method Decleration 
+        return SyntaxFactory
+            .MethodDeclaration(
+                SyntaxFactory.ParseTypeName($"Task<{entity.Name}>"),
+                SyntaxFactory.Identifier("UndoDeleteAsync")
+            )
+            .AddModifiers(
+                SyntaxFactory.Token(SyntaxKind.PublicKeyword),
+                SyntaxFactory.Token(SyntaxKind.AsyncKeyword)
+            )
+            .AddParameterListParameters(paramList.ToArray())
+            .WithBody(SyntaxFactory.Block(bodyStatements));
+    }
 
     // Datatable Methods
     private MethodDeclarationSyntax GeneratorDatatableClientSideMethodOfConcrete(Entity entity)

@@ -141,6 +141,7 @@ public interface IServiceBase<TEntity> where TEntity : class, IEntity
     void _Delete(TEntity entity);
     void _Delete(IEnumerable<TEntity> entities);
     void _Delete(Expression<Func<TEntity, bool>> where);
+    TEntity _UndoDelete(Expression<Func<TEntity, bool>> where);
     #endregion
 
     #region IsExist & Count
@@ -359,6 +360,7 @@ public interface IServiceBaseAsync<TEntity> where TEntity : class, IEntity
     Task _DeleteAsync(TEntity entity, CancellationToken cancellationToken = default);
     Task _DeleteAsync(IEnumerable<TEntity> entityList, CancellationToken cancellationToken = default);
     Task _DeleteAsync(Expression<Func<TEntity, bool>> where, CancellationToken cancellationToken = default);
+    Task<TEntity> _UndoDeleteAsync(Expression<Func<TEntity, bool>> where, CancellationToken cancellationToken = default);
     #endregion
 
     #region IsExist & Count
@@ -698,6 +700,20 @@ public class ServiceBase<TEntity, TRepository> : IServiceBase<TEntity>, IService
     public void _Delete(Expression<Func<TEntity, bool>> where)
     {
         _repository.DeleteAndSave(where);
+    }
+
+    public TEntity _UndoDelete(Expression<Func<TEntity, bool>> where)
+    {
+        TEntity? originalEntity = _repository.Get(where: where, ignoreFilters: true);
+
+        if (originalEntity == null) throw new GeneralException($""The entity({nameof(TEntity)}) was not found to delete rollback."");
+        if (originalEntity is not ISoftDeletableEntity softEntity) throw new GeneralException(""Type of Entity must implement ISoftDeletableEntity for Rollback Delete"");
+
+        softEntity.IsDeleted = false;
+        softEntity.DeletedBy = null;
+        softEntity.DeletedDateUtc = null;
+
+        return _repository.UpdateAndSave(originalEntity);
     }
     #endregion
 
@@ -1197,6 +1213,20 @@ public class ServiceBase<TEntity, TRepository> : IServiceBase<TEntity>, IService
     public async Task _DeleteAsync(Expression<Func<TEntity, bool>> where, CancellationToken cancellationToken = default)
     {
         await _repository.DeleteAndSaveAsync(where, cancellationToken);
+    }
+
+    public async Task<TEntity> _UndoDeleteAsync(Expression<Func<TEntity, bool>> where, CancellationToken cancellationToken = default)
+    { 
+        TEntity? originalEntity = await _repository.GetAsync(where: where, ignoreFilters: true, cancellationToken: cancellationToken);
+
+        if (originalEntity == null) throw new GeneralException($""The entity({nameof(TEntity)}) was not found to delete rollback."");
+        if (originalEntity is not ISoftDeletableEntity softEntity) throw new GeneralException(""Type of Entity must implement ISoftDeletableEntity for Rollback Delete"");
+
+        softEntity.IsDeleted = false;
+        softEntity.DeletedBy = null;
+        softEntity.DeletedDateUtc = null;
+
+        return await _repository.UpdateAndSaveAsync(originalEntity, cancellationToken);
     }
     #endregion
 

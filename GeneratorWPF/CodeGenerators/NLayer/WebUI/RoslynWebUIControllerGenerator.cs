@@ -130,6 +130,7 @@ public class RoslynWebUIControllerGenerator
 
             // Delete
             GenerateActionDeletePost(entity, uniqueFields),
+            GenerateActionUndoDelete(entity, uniqueFields),
 
             // Datatable
             GenerateActionDatatableServerSide(entity)
@@ -906,6 +907,76 @@ public class RoslynWebUIControllerGenerator
     }
     #endregion
 
+    #region UndoDelete Methods
+    private MethodDeclarationSyntax GenerateActionUndoDelete(Entity entity, List<Field> uniqueFields)
+    {
+        string serviceName = $"_{entity.Name.ToCamelCase()}Service";
+
+        // 1) Parameters of Action
+        var paramList = new List<ParameterSyntax>(); 
+        foreach (var field in uniqueFields)
+        {
+            paramList.Add(
+                SyntaxFactory.Parameter(SyntaxFactory.Identifier(field.Name.ToCamelCase()))
+                    .WithType(SyntaxFactory.IdentifierName(field.GetMapedTypeName()))
+            );
+        }
+
+        // 2) If Null Statements
+        List<IfStatementSyntax> ifStatements = new();
+        foreach (var field in uniqueFields)
+        {
+            ifStatements.Add(CreateIfDefaultCheckCondition(field.Name.ToCamelCase()));
+        }
+
+        // 3) Arguments of method call
+        var argumentsOfMethod = new List<ArgumentSyntax>();
+        foreach (var field in uniqueFields)
+        {
+            argumentsOfMethod.Add(
+                SyntaxFactory.Argument(SyntaxFactory.IdentifierName(field.Name.ToCamelCase()))
+            );
+        }
+
+        // 4) Method Call
+        var awaitInvocation =
+                SyntaxFactory.AwaitExpression(
+                    SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.IdentifierName($"{serviceName}.UndoDeleteAsync")
+                    )
+                    .AddArgumentListArguments(argumentsOfMethod.ToArray())
+                );
+
+        // 5) Method Call Decleration by Result
+        var methodCallDecleration = SyntaxFactory.ExpressionStatement(awaitInvocation);
+
+        // 5) Return Statement
+        var returnViewStatement =
+            SyntaxFactory.ReturnStatement(
+                SyntaxFactory.InvocationExpression(SyntaxFactory.IdentifierName("Ok"))
+            );
+
+
+        // 6) Method Decleration
+        var bodyStatements = new List<StatementSyntax>();
+        bodyStatements.AddRange(ifStatements);
+        bodyStatements.Add(methodCallDecleration);
+        bodyStatements.Add(returnViewStatement);
+
+        return SyntaxFactory
+            .MethodDeclaration(
+                SyntaxFactory.ParseTypeName("Task<IActionResult>"),
+                SyntaxFactory.Identifier("UndoDelete")
+            )
+            .AddModifiers(
+                SyntaxFactory.Token(SyntaxKind.PublicKeyword),
+                SyntaxFactory.Token(SyntaxKind.AsyncKeyword)
+            )
+            .AddParameterListParameters(paramList.ToArray())
+            .WithBody(SyntaxFactory.Block(bodyStatements));
+    }
+    #endregion
+
     #region Datatable Methods
     private MethodDeclarationSyntax GenerateActionDatatableServerSide(Entity entity)
     {
@@ -1095,5 +1166,4 @@ public class RoslynWebUIControllerGenerator
 
         return list.ToArray();
     }
-
 }

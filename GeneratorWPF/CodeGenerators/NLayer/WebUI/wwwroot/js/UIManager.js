@@ -26,6 +26,7 @@
                                     path: e_form.attr("action"),
                                     requestData: e_form.serializeArray(),
                                     buttonElement: e_btn_modal,
+                                    formId: e_form.attr("id"), // eğer form içerisinde file input varsa requestData görmezden gelinir ve dosya aktarılabilir
                                     onSuccess: () => {
                                         $(e_modal).modal("hide");
                                         if (pageTable != undefined) pageTable.reload();
@@ -70,6 +71,7 @@
                                             path: e_form.attr("action"),
                                             requestData: e_form.serializeArray(),
                                             buttonElement: e_btn_modal,
+                                            formId: e_form.attr("id"), // eğer form içerisinde file input varsa requestData görmezden gelinir ve dosya aktarılabilir
                                             onSuccess: () => {
                                                 $(e_modal).modal("hide");
                                                 if (pageTable != undefined) pageTable.reload();
@@ -83,6 +85,45 @@
                 })
             }
         });
+    },
+    UndoDeleteButtonTable: function ({ 
+        requestUrl = '',
+        requestData = undefined,
+        pageTable = undefined,
+        disable = false
+    }) {
+        return DatatableManager.RowButton({
+            kind: DatatableManager.buttonKinds.undo,
+			disable: disable,
+			onClick: async () => {
+				ModalManager.CreateModal({
+                    innerHtml: `<h5 class="px-3 m-0">Silme İşlemini Geri Almak İstediğinize Emin misiniz?</h5>`,
+					modalSize: 'sm',
+					btnCancelSize: 'sm',
+					showHeader: false,
+					buttons: [
+						ModalManager.Button(
+							{
+                                kind: ModalManager.buttonKinds.confirmation,
+								disable: disable,
+								onClick: (e_btn, e_mdl) => {
+									RequestManager.Get({
+										path: requestUrl,
+										requestData: requestData,
+										buttonElement: e_btn,
+										onSuccess: () => {
+											$(e_mdl).modal("hide");
+											if (pageTable != undefined) pageTable.reload();
+										}
+									})
+								},
+								size: 'sm'
+							}
+						)
+					],
+				}).show();
+			}
+		});
     },
     DeleteButtonTable: function ({
         text = 'Are you sure you want to delete?',

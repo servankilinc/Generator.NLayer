@@ -1,3 +1,13 @@
+html.layout-menu-collapsed #side_menu_logo {
+    visibility: hidden;
+    transition: opacity 5.5s ease, transform 5.5s ease;
+}
+
+html.layout-menu-hover #side_menu_logo {
+    visibility: visible;
+    transition: opacity 5.5s ease, transform 5.5s ease;
+}
+
 html {
     font-size: 14px;
 }

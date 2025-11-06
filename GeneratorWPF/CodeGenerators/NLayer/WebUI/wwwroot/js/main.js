@@ -56,31 +56,34 @@ document.addEventListener('DOMContentLoaded', function () {
     (function () {
         RenderShortCutsDropdown();
     })();
-    document.getElementById("dropdown-shortcuts-add").addEventListener("click", function () {
-        let isSubMEnuActive = $("li.menu-item.active").length > 1;
-        let activeMenuE = isSubMEnuActive ? $("li .menu-item.active") : $("li.menu-item.active");
-        let name = isSubMEnuActive ? `${activeMenuE.closest("ul").parent().find("span.menu-toggle > div.page-name").text()} ${activeMenuE.find("a > div.page-name").text()}` : activeMenuE.find("a > div.page-name").text();
-        let icon = activeMenuE.find("a").data("icon");
+    if (document.getElementById("dropdown-shortcuts-add") != null)
+    {
+        document.getElementById("dropdown-shortcuts-add").addEventListener("click", function () {
+            let isSubMEnuActive = $("li.menu-item.active").length > 1;
+            let activeMenuE = isSubMEnuActive ? $("li .menu-item.active") : $("li.menu-item.active");
+            let name = isSubMEnuActive ? `${activeMenuE.closest("ul").parent().find("span.menu-toggle > div.page-name").text()} ${activeMenuE.find("a > div.page-name").text()}` : activeMenuE.find("a > div.page-name").text();
+            let icon = activeMenuE.find("a").data("icon");
 
-        let _location = window.location.href;
-        let links = localStorage.getItem("list-of-shortcuts");
-        let shortcuts = [];
-        if (links != undefined) {
-            shortcuts = JSON.parse(links);
-            let isExist = shortcuts.some(s => s.location == _location);
-            if (isExist) {
-                return;
+            let _location = window.location.href;
+            let links = localStorage.getItem("list-of-shortcuts");
+            let shortcuts = [];
+            if (links != undefined) {
+                shortcuts = JSON.parse(links);
+                let isExist = shortcuts.some(s => s.location == _location);
+                if (isExist) {
+                    return;
+                }
             }
-        }
 
-        shortcuts.push({
-            name: name,
-            icon: icon,
-            location: _location
+            shortcuts.push({
+                name: name,
+                icon: icon,
+                location: _location
+            });
+            localStorage.setItem("list-of-shortcuts", JSON.stringify(shortcuts));
+            RenderShortCutsDropdown();
         });
-        localStorage.setItem("list-of-shortcuts", JSON.stringify(shortcuts));
-        RenderShortCutsDropdown();
-    });
+    }
 });
 
 
@@ -228,8 +231,8 @@ document.addEventListener('DOMContentLoaded', function () {
  */
 document.addEventListener('DOMContentLoaded', function () {
     (function () {
-        const elemensOfCheckBoxs = document.querySelectorAll('.form-check-input');
-
+        const elemensOfCheckBoxs = document.querySelectorAll('input[type="checkbox"]');
+        
         if (elemensOfCheckBoxs != null) {
             elemensOfCheckBoxs.forEach((checkbox) => {
                 checkbox.value = checkbox.checked ? "true" : "false";

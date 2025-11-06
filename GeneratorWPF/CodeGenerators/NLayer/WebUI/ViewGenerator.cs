@@ -673,28 +673,64 @@ public class ViewGenerator
         string uniqueFieldParams = string.Join(", ", entity.Fields.Where(f => f.IsUnique).Select(d => $"\"{d.Name.ToCamelCase()}\": rowData.{d.Name.ToCamelCase()}"));
 
         string entityLabelName = entity.Name.DivideToLabelName();
-        return $@"
+      
+        if (entity.SoftDeletable == false)
+        {
+            return $@"
                             DatatableManager.AppendRowButtons(td,
                                 [
                                     // 1) Update Button
                                     UIManager.UpdateButtonTable({{
-										title: ""Update {entityLabelName} Informations"",
-										formGetterUrl: '{entity.Name}/UpdateForm',
-										requestData: {{
-											{uniqueFieldParams}
-										}},
-										pageTable: PageTable
-									}}),
+						                title: 'Update {entityLabelName} Informations',
+						                formGetterUrl: '{entity.Name}/UpdateForm',
+						                requestData: {{
+							                {uniqueFieldParams}
+						                }},
+						                pageTable: PageTable
+					                }}),
                                     // 2) Delete Button
-									UIManager.DeleteButtonTable({{
-										requestUrl: '{entity.Name}/Delete',
+					                UIManager.DeleteButtonTable({{
+						                requestUrl: '{entity.Name}/Delete',
                                         disable: rowData.isDeleted == true,
-										requestData: {{
-                                            // deleteModel destegi yok
+						                requestData: {{
                                             {uniqueFieldParams}
-										}},
-										pageTable:PageTable
-									}})
+						                }},
+						                pageTable:PageTable
+					                }})
+                                ]
+                            );";
+        }
+        return $@"  
+                            let deleteHandleButton = rowData.isDeleted == true ?
+				                UIManager.UndoDeleteButtonTable({{
+					                requestUrl: '{entity.Name}/UndoDelete',
+					                requestData: {{
+                                        {uniqueFieldParams}
+					                }},
+					                pageTable:PageTable
+				                }}) :
+				                UIManager.DeleteButtonTable({{
+					                requestUrl: '{entity.Name}/Delete',
+					                requestData: {{
+						                // deleteModel destegi yok
+                                        {uniqueFieldParams}
+					                }},
+					                pageTable:PageTable
+				                }});
+
+                            DatatableManager.AppendRowButtons(td,
+                                [
+                                    // 1) Update Button
+                                    UIManager.UpdateButtonTable({{
+						                title: 'Update {entityLabelName} Informations',
+						                formGetterUrl: '{entity.Name}/UpdateForm',
+						                requestData: {{
+							                {uniqueFieldParams}
+						                }},
+						                pageTable: PageTable
+					                }}),
+                                    // 2) Delete Button
+					                deleteHandleButton
                                 ]
                             );";
     }
@@ -889,7 +925,7 @@ public class ViewGenerator
                 string listPropName = relation.Key.ToForeignFieldSlectListName(entityName);
 
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -914,7 +950,7 @@ public class ViewGenerator
             else if (variableGroupType == 2)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -926,7 +962,7 @@ public class ViewGenerator
             else if (variableGroupType == 3)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -938,7 +974,7 @@ public class ViewGenerator
             else if (variableGroupType == 4)
             {
                 modelFilterFieldInput.InputCode = $@"                
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <div class=""form-check"">
                         <label asp-for=""{modelName}{inputName}"" class=""form-check-label"">
                             {labelText}
@@ -952,7 +988,7 @@ public class ViewGenerator
             else if (variableGroupType == 5)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -964,7 +1000,7 @@ public class ViewGenerator
             else if (variableGroupType == 6)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -1019,7 +1055,7 @@ public class ViewGenerator
                 string listPropName = relation.Key.ToForeignFieldSlectListName(entityName);
 
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -1038,7 +1074,7 @@ public class ViewGenerator
             else if (variableGroupType == 2)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -1050,7 +1086,7 @@ public class ViewGenerator
             else if (variableGroupType == 3)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -1062,7 +1098,7 @@ public class ViewGenerator
             else if (variableGroupType == 4)
             {
                 modelFilterFieldInput.InputCode = $@"                
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <div class=""form-check"">
                         <label asp-for=""{modelName}{inputName}"" class=""form-check-label"">
                             {labelText}
@@ -1076,7 +1112,7 @@ public class ViewGenerator
             else if (variableGroupType == 5)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>
@@ -1088,7 +1124,7 @@ public class ViewGenerator
             else if (variableGroupType == 6)
             {
                 modelFilterFieldInput.InputCode = $@"
-                <div class=""col-sm-6"">
+                <div class=""col-md-6"">
                     <label asp-for=""{modelName}{inputName}"" class=""form-label"">
                         {labelText}
                     </label>

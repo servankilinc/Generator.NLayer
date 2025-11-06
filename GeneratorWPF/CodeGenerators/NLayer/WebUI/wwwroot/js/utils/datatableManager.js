@@ -11,7 +11,7 @@
             >
             <"card-body"
                 rt
-                <"d-flex justify-content-between row"
+                <"d-flex justify-content-between row px-3 pb-3"
                     <"col-sm-12 col-md-6"i>
                     <"col-sm-12 col-md-6"p>
                 >
@@ -28,7 +28,7 @@
                     <"ms-5"f>
                 >
                 rt
-                <"d-flex justify-content-between row"
+                <"d-flex justify-content-between row px-3 pb-3"
                     <"col-sm-12 col-md-6"i>
                     <"col-sm-12 col-md-6"p>
                 >
@@ -76,32 +76,38 @@
         delete: 'delete',
         confirmation: 'confirmation',
         cancel: 'cancel',
+        undo: 'undo'
     },
     defaultButtonsProps: {
         detail: {
             text: 'Detay',
-            name: 'btn-outline-primary',
+            name: 'btn-primary',
             icon: 'fa-solid fa-file-lines', // 'fa-regular fa-file-lines',
         },
         update: {
             text: 'Güncelle',
-            name: 'btn-outline-success',
+            name: 'btn-success',
             icon: 'fa-solid fa-pen-to-square',
         },
         delete: {
             text: 'Sil',
-            name: 'btn-outline-danger',
+            name: 'btn-danger',
             icon: 'fa-solid fa-trash',
         },
         confirmation: {
             text: 'Onay',
-            name: 'btn-outline-info',
+            name: 'btn-info',
             icon: 'fa-solid fa-circle-check',
         },
         cancel: {
             text: 'İptal',
-            name: 'btn-outline-secondary',
+            name: 'btn-secondary',
             icon: 'fa-solid fa-ban',
+        },
+        undo: {
+            text: 'Geri Al',
+            name: 'btn-warning',
+            icon: 'fa-solid fa-trash-can-arrow-up',
         }
     },
 
@@ -182,8 +188,10 @@
                 }
 
                 let originalBtnContent = '...';
-                $.ajax({
-                    url: `${_baseUrl}/${path}`,
+				if (path[0] != '/') path = '/' + path.trim();
+				
+				$.ajax({
+                    url: `${_baseUrl}${path}`,
                     type: method,
                     dataType: 'json',
                     data: data,
