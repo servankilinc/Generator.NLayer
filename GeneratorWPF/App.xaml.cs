@@ -4,36 +4,53 @@ using GeneratorWPF.ViewModel._Dto;
 using GeneratorWPF.ViewModel._Entity;
 using Microsoft.Extensions.DependencyInjection;
 using System.Windows;
-
+using Microsoft.Extensions.Hosting;
 namespace GeneratorWPF;
 
 public partial class App : Application
 {
-    private readonly ServiceProvider _serviceProvider;
+    public static IHost? AppHost { get; private set; }
     public App()
     {
-        IServiceCollection services = new ServiceCollection();
-        
-        services.AddSingleton<INavigationService, NavigationService>();
- 
-        services.AddSingleton<MainWindow>(); 
+        AppHost = Host.CreateDefaultBuilder()
+            .ConfigureServices((hostContext, services) =>
+            {
+                services.AddSingleton<INavigationService, NavigationService>();
 
-        services.AddTransient<MainWindowVM>();
-        services.AddTransient<HomeVM>();
-        services.AddTransient<EntityHomeVM>();
-        services.AddTransient<EntityDetailVM>();
-        services.AddTransient<DtoHomeVM>();
-        services.AddTransient<DtoDetailVM>();
-        services.AddTransient<EntranceVM>();
+                services.AddSingleton<MainWindow>();
 
-        _serviceProvider = services.BuildServiceProvider();
+                services.AddTransient<MainWindowVM>();
+                services.AddTransient<HomeVM>();
+                services.AddTransient<EntityHomeVM>();
+                services.AddTransient<EntityDetailVM>();
+                services.AddTransient<DtoHomeVM>();
+                services.AddTransient<DtoDetailVM>();
+                services.AddTransient<EntranceVM>();
+            })
+            .Build();
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+
+    protected override async void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);
-         
-        var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+        if (AppHost is null) throw new InvalidOperationException("AppHost is not initialized.");
+
+        await AppHost.StartAsync();
+
+        var mainWindow = AppHost.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();
+
+        base.OnStartup(e);
+    }
+
+    protected override async void OnExit(ExitEventArgs e)
+    {
+        if (AppHost is not null)
+        {
+            await AppHost.StopAsync();
+            AppHost.Dispose();
+        }
+
+        base.OnExit(e);
     }
 }

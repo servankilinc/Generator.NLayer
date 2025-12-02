@@ -114,14 +114,6 @@
                         </Style>
                     </Button.Resources>
                 </Button>
-                <!--<Button Command="{Binding ToValidationListCommand}" Background="#FF3C61C0" Margin="0,5" BorderThickness="0">
-                    <Button.Content>
-                        <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Orientation="Horizontal" >
-                            <Image Source="/Images/img_order.png" Width="30" Height="30"/>
-                            <TextBlock Text="Validation List" Width="100" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="White"/>
-                        </StackPanel>
-                    </Button.Content>   
-                </Button>-->
             </StackPanel>
 
             <Border Grid.Row="1" Grid.Column="1" Margin="10,20,10,10" Background="#F90C2848" CornerRadius="8" Padding="10">
