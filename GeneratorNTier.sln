@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.12.35527.113 d17.12
+# Visual Studio Version 18
+VisualStudioVersion = 18.2.11415.280 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeneratorWPF", "GeneratorWPF\GeneratorWPF.csproj", "{F3C76D0F-AFB5-4013-B979-6EE9B9465B54}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Generator.NTier", "GeneratorWPF\Generator.NTier.csproj", "{F3C76D0F-AFB5-4013-B979-6EE9B9465B54}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,5 +18,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {052D78FD-53B1-479D-A6C4-B452C25D58CA}
 	EndGlobalSection
 EndGlobal
