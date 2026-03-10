@@ -28,9 +28,9 @@ public class NLayerGeneratorService
             if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName) || string.IsNullOrEmpty(_appSetting.ProjectName))
                 throw new Exception("App Settings Not Completted To Generate!");
 
-            var NLayerBaseService = new NLayerBaseService();
+            var NLayerBaseService = new NLayerGeneratorBase(_appSetting);
 
-            log(NLayerBaseService.CreateSolution(_appSetting.Path, _appSetting.ProjectName));
+            log(NLayerBaseService.CreateSolution());
 
             return true;
         }
@@ -45,62 +45,30 @@ public class NLayerGeneratorService
     {
         try
         {
-            if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName))
+            if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName) || string.IsNullOrEmpty(_appSetting.ProjectName))
                 throw new Exception("App Settings Not Completted To Generate!");
 
-            var NLayerCoreService = new NLayerCoreService();
-
-            string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
+            var NLayerCoreService = new NLayerCoreGenerator(_appSetting);
 
             // 1. Create Core Class Library if not exists
-            log(NLayerCoreService.CreateProject(solutionPath, _appSetting.SolutionName));
+            log(NLayerCoreService.CreateClassLibrearyProject(_appSetting.CoreLayerProjectName));
 
             // 2. Add Packages
-            log(NLayerCoreService.AddPackage(solutionPath, "Autofac"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Autofac.Extensions.DependencyInjection"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Autofac.Extras.DynamicProxy"));
-            log(NLayerCoreService.AddPackage(solutionPath, "AutoMapper --version 14.0.0"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Castle.Core.AsyncInterceptor"));
-            log(NLayerCoreService.AddPackage(solutionPath, "FluentValidation"));
-            log(NLayerCoreService.AddPackage(solutionPath, "FluentValidation.DependencyInjectionExtensions"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.AspNetCore.Identity.EntityFrameworkCore"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.EntityFrameworkCore"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.EntityFrameworkCore.Design"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.EntityFrameworkCore.SqlServer"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.EntityFrameworkCore.Tools"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.Extensions.Caching.StackExchangeRedis"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Microsoft.Extensions.Configuration.Binder"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Newtonsoft.Json"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Serilog.AspNetCore"));
-            log(NLayerCoreService.AddPackage(solutionPath, "Serilog.Sinks.File"));
-            log(NLayerCoreService.AddPackage(solutionPath, "System.ComponentModel.Composition"));
-            log(NLayerCoreService.AddPackage(solutionPath, "System.Linq.Dynamic.Core"));
+            log(NLayerCoreService.AddPackage("AutoMapper --version 14.0.0", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("FluentValidation --version 12.1.1", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("FluentValidation.DependencyInjectionExtensions --version 12.1.1", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("Microsoft.EntityFrameworkCore --version 10.0.3", _appSetting.CoreLayerProjectName)); 
+            log(NLayerCoreService.AddPackage("Newtonsoft.Json --version 13.0.4", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("Serilog.AspNetCore --version 10.0.0", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("Serilog.Sinks.Async --version 2.1.0", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("Serilog.Sinks.File --version 7.0.0", _appSetting.CoreLayerProjectName));
+            log(NLayerCoreService.AddPackage("System.Linq.Dynamic.Core --version 1.7.1", _appSetting.CoreLayerProjectName));
 
-            log(NLayerCoreService.Restore(solutionPath));
+            log(NLayerCoreService.Restore(_appSetting.CoreLayerProjectName));
 
-            // 3. BaseRequestModels
-            log(NLayerCoreService.GenerateBaseRequestModels(solutionPath));
-
-            // 4. Enums
-            log(NLayerCoreService.GenerateEnums(solutionPath));
-
-            // 5. Models
-            log(NLayerCoreService.GenerateModels(solutionPath));
-
-            // 6. Utils
-            log(NLayerCoreService.GenerateUtilsAuth(solutionPath));
-            log(NLayerCoreService.GenerateUtilsCaching(solutionPath));
-            log(NLayerCoreService.GenerateUtilsCriticalData(solutionPath));
-            log(NLayerCoreService.GenerateUtilsCrossCuttingConcerns(solutionPath));
-            log(NLayerCoreService.GenerateUtilsDatatable(solutionPath));
-            log(NLayerCoreService.GenerateUtilsDynamicQuery(solutionPath));
-            log(NLayerCoreService.GenerateUtilsExceptionHandle(solutionPath));
-            log(NLayerCoreService.GenerateUtilsHttpContextManager(solutionPath));
-            log(NLayerCoreService.GenerateUtilsPagination(solutionPath));
-
-            // 7. Service Registration
-            log(NLayerCoreService.GenerateServiceRegistrations(solutionPath));
-
+            // 3. Files
+            log(NLayerCoreService.GenerateStaticFiles("Core", _appSetting.CoreLayerProjectName));
+            
             return true;
         }
         catch (Exception ex)
@@ -117,30 +85,25 @@ public class NLayerGeneratorService
             if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName))
                 throw new Exception("App Settings Not Completted To Generate!");
 
-            var NLayerModelService = new NLayerModelService(_appSetting);
-
-            string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
-
+            var NLayerModelService = new NLayerModelGenerator(_appSetting);
+             
             // 1. Create Core Class Library if not exists
-            log(NLayerModelService.CreateProject(solutionPath, _appSetting.SolutionName));
+            log(NLayerModelService.CreateClassLibrearyProject(_appSetting.ModelLayerProjectName, referances: [$"../{_appSetting.CoreLayerProjectName}/{_appSetting.CoreLayerProjectName}.csproj"]));
 
-            // 2. Auth
+            // 2. Files
+            log(NLayerModelService.GenerateStaticFiles("Model", _appSetting.ModelLayerProjectName));
+
+            // 3. Auth
             if (_appSetting.IsThereIdentiy)
             {
-                log(NLayerModelService.GenerateAuthModels(solutionPath));
+                log(NLayerModelService.GenerateAuthModels());
             }
 
-            // 3. Dtos
-            log(NLayerModelService.GenerateDtos(solutionPath));
+            // 4. Dtos
+            log(NLayerModelService.GenerateDtos());
 
-            // 4. Entities
-            log(NLayerModelService.GenerateEntities(solutionPath));
-
-            // 5. ProjectEntities
-            log(NLayerModelService.GenerateProjectEntities(solutionPath));
-
-            // 6. Service Registration
-            log(NLayerModelService.GenerateServiceRegistrations(solutionPath));
+            // 5. Entities
+            log(NLayerModelService.GenerateEntities());
 
             return true;
         }
@@ -158,7 +121,7 @@ public class NLayerGeneratorService
             if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName))
                 throw new Exception("App Settings Not Completted To Generate!");
 
-            var nLayerDataAccessService = new NLayerDataAccessService(_appSetting);
+            var nLayerDataAccessService = new NLayerDataAccessGenerator(_appSetting);
 
             string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
 
@@ -199,7 +162,7 @@ public class NLayerGeneratorService
             if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName))
                 throw new Exception("App Settings Not Completted To Generate!");
 
-            var nLayerBusinessService = new NLayerBusinessService(_appSetting);
+            var nLayerBusinessService = new NLayerBusinessGenerator(_appSetting);
 
             string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
 
@@ -282,7 +245,7 @@ public class NLayerGeneratorService
             if (_appSetting == null || string.IsNullOrEmpty(_appSetting.Path) || string.IsNullOrEmpty(_appSetting.SolutionName))
                 throw new Exception("App Settings Not Completted To Generate!");
 
-            var nLayerWebUIService = new NLayerWebUIService(_appSetting);
+            var nLayerWebUIService = new NLayerWebUIGenerator(_appSetting);
 
             string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
 

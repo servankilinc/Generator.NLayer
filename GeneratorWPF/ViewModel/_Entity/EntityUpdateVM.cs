@@ -46,7 +46,6 @@ public class EntityUpdateVM : BaseViewModel
             TableName = entity.TableName,
             SoftDeletable = entity.SoftDeletable,
             Auditable = entity.Auditable,
-            Loggable = entity.Loggable,
             Archivable = entity.Archivable,
             CreateDtoId = entity.CreateDtoId,
             UpdateDtoId = entity.UpdateDtoId,

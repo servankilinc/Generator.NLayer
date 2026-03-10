@@ -52,17 +52,17 @@ namespace GeneratorWPF.ViewModel._Generate
                     stepControl = _layerGeneratorService.GenerateModelLayer(AppendToResults);
                     if (!stepControl) return false;
 
-                    stepControl = _layerGeneratorService.GenerateDataAccessLayer(AppendToResults);
-                    if (!stepControl) return false;
+                    //stepControl = _layerGeneratorService.GenerateDataAccessLayer(AppendToResults);
+                    //if (!stepControl) return false;
 
-                    stepControl = _layerGeneratorService.GenerateBusinessLayer(AppendToResults);
-                    if (!stepControl) return false;
+                    //stepControl = _layerGeneratorService.GenerateBusinessLayer(AppendToResults);
+                    //if (!stepControl) return false;
 
-                    stepControl = _layerGeneratorService.GenerateAPILayer(AppendToResults);
-                    if (!stepControl) return false;
+                    //stepControl = _layerGeneratorService.GenerateAPILayer(AppendToResults);
+                    //if (!stepControl) return false;
 
-                    stepControl = _layerGeneratorService.GenerateWebUIILayer(AppendToResults);
-                    if (!stepControl) return false;
+                    //stepControl = _layerGeneratorService.GenerateWebUIILayer(AppendToResults);
+                    //if (!stepControl) return false;
 
                     return true;
                 });

@@ -23,6 +23,11 @@ namespace GeneratorWPF.Models
         public virtual Entity? RoleEntity { get; set; }
 
 
+        public string SolutionPath { get => System.IO.Path.Combine(this.Path ?? "", this.ProjectName ?? ""); }
+        public string CoreLayerProjectName { get => $"{this.ProjectName}.Core"; }
+        public string ModelLayerProjectName { get => $"{this.ProjectName}.Model"; }
+        public string BusinessLayerProjectName { get => $"{this.ProjectName}.Business"; }
+        public string DataAccessLayerProjectName { get => $"{this.ProjectName}.DataAccess"; }
         public IdentityModelTypes GetIdentityModelTypeNames(EntityRepository entityRepository, FieldRepository fieldRepository)
         {
             Entity? roleEntity = null;
@@ -61,6 +66,7 @@ namespace GeneratorWPF.Models
             };
         }
     }
+
     public class IdentityModelTypes
     {
         public string IdentityUserType { get; set; } = string.Empty;

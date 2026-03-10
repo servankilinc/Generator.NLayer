@@ -8,7 +8,6 @@
         
         public bool SoftDeletable { get; set; }
         public bool Auditable { get; set; }
-        public bool Loggable { get; set; }
         public bool Archivable { get; set; }
 
         public int? CreateDtoId { get; set; }

@@ -81,10 +81,6 @@
                 <CheckBox IsChecked="{Binding EntityUpdateModel.Auditable, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"  VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                <Label>Loggable:</Label>
-                <CheckBox IsChecked="{Binding EntityUpdateModel.Loggable, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"  VerticalAlignment="Center" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
                 <Label>Archivable:</Label>
                 <CheckBox IsChecked="{Binding EntityUpdateModel.Archivable, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"  VerticalAlignment="Center" />
             </StackPanel>

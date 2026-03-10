@@ -35,7 +35,6 @@
 
                     <DataGridCheckBoxColumn Header="SoftDeletable" Binding="{Binding SoftDeletable}" Width="100" />
                     <DataGridCheckBoxColumn Header="Auditable" Binding="{Binding Auditable}" Width="100" />
-                    <DataGridCheckBoxColumn Header="Loggable" Binding="{Binding Loggable}" Width="100" />
                     <DataGridCheckBoxColumn Header="Archivable" Binding="{Binding Archivable}" Width="100" />
 
                     <DataGridTextColumn Header="Create Model" Binding="{Binding CreateDto.Name}" Width="*" />

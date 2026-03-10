@@ -21,7 +21,6 @@ namespace GeneratorWPF.Repository
                     TableName = createDto.TableName,
                     SoftDeletable = createDto.SoftDeletable,
                     Auditable = createDto.Auditable,
-                    Loggable = createDto.Loggable,
                     Archivable = createDto.Archivable
                 };
                 var insertedEntity = _context.Set<Entity>().Add(entityToInsert).Entity;
@@ -116,7 +115,6 @@ namespace GeneratorWPF.Repository
             
             existData.SoftDeletable = updateDto.SoftDeletable;
             existData.Auditable  = updateDto.Auditable;
-            existData.Loggable  = updateDto.Loggable;
             existData.Archivable  = updateDto.Archivable;
 
             context.Entities.Update(existData);
