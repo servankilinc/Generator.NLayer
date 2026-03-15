@@ -103,7 +103,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             usings: [.. usings],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
-                classes: [
+                members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "LoginResponse",
@@ -128,7 +128,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
              ],
              nspace: NamespaceDeclaration(
                  value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
-                 classes: [
+                 members: [
                      ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "LoginRequest",
@@ -159,7 +159,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
-                classes: [
+                members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshAuthResponse",
@@ -216,7 +216,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             usings: ["FluentValidation"],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
-                classes: [
+                members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshAuthRequest",
@@ -272,7 +272,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             usings: [.. usings],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
-                classes: [
+                members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SignUpResponse",
@@ -334,7 +334,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             ],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
-                classes: [
+                members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SignUpRequest",
@@ -371,7 +371,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                 usings: [$"{_appSetting.CoreLayerProjectName}.Model"],
                 nspace: NamespaceDeclaration(
                     value: $"{_appSetting.ModelLayerProjectName}.Entities",
-                    classes: [
+                    members: [
                         ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshToken",
@@ -457,7 +457,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             usings: [.. usings],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Entities",
-                classes: [
+                members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: entity.Name,
@@ -656,7 +656,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             usings: [.. usings],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Dtos.{dto.RelatedEntity.Name}",
-                classes: [.. classes]
+                members: [.. classes]
             )
         ).ToFullString();
     }

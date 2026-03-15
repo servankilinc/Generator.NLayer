@@ -11,6 +11,7 @@ using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using static Azure.Core.HttpHeader;
 
 namespace GeneratorWPF.CodeGenerators.NLayer.Base;
 
@@ -279,6 +280,31 @@ public class NLayerGeneratorBase
 
 
     #region Roslyn Methods
+    protected ParameterSyntax ParameterDeclaration(string type, string name, bool required = true, SyntaxKind[]? modifiers = null)
+    {
+        if (required == false && !Statics.nonReferanceTypes.Contains(type) && !type.EndsWith("?"))
+            type += "?";
+
+        var parameter = SyntaxFactory
+            .Parameter(SyntaxFactory.Identifier(name))
+            .WithType(SyntaxFactory.ParseTypeName(type));
+        
+        if (modifiers?.Length > 0)
+            parameter = parameter.AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
+
+        if (required == false)
+            parameter = parameter.WithDefault(
+                SyntaxFactory.EqualsValueClause(
+                    SyntaxFactory.LiteralExpression(
+                         SyntaxKind.DefaultLiteralExpression,
+                         SyntaxFactory.Token(SyntaxKind.DefaultKeyword)
+                    )
+                )
+            );
+
+        return parameter;
+    }
+
     protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, AttributeSyntax[]? attributes = null)
     {
         if (required == false && !type.EndsWith("?") && !Statics.nonReferanceTypes.Contains(type))
@@ -316,6 +342,50 @@ public class NLayerGeneratorBase
         return property;
     }
 
+    protected FieldDeclarationSyntax FieldDeclaration(SyntaxKind[] modifiers, string type, string name, bool nullable = false)
+    {
+        if (nullable && !Statics.nonReferanceTypes.Contains(type) && !type.EndsWith("?"))
+            type += "?";
+
+        var field = SyntaxFactory.FieldDeclaration(
+            SyntaxFactory.VariableDeclaration(
+                SyntaxFactory.ParseTypeName(type))
+                    .AddVariables(SyntaxFactory.VariableDeclarator(name))
+        );
+
+        if (modifiers?.Length > 0)
+            field = field.AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
+
+        return field;
+    }
+
+    protected MethodDeclarationSyntax MethodDeclaration(string name, string returnType, bool isThereBody = true, SyntaxKind[]? modifiers = null, ParameterSyntax[]? parameters = null, AttributeSyntax[]? attributes = null, BlockSyntax? block = null, string? body = null)
+    {
+        var methodSytax = SyntaxFactory
+            .MethodDeclaration(SyntaxFactory.ParseTypeName(returnType), SyntaxFactory.Identifier(name));
+
+        if (modifiers?.Length > 0)
+            methodSytax = methodSytax.AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
+
+        if (parameters?.Length > 0)
+            methodSytax = methodSytax.AddParameterListParameters(parameters);
+
+        if (attributes?.Length > 0)
+            methodSytax = methodSytax.AddAttributeLists(SyntaxFactory.AttributeList(SyntaxFactory.SeparatedList(attributes)));
+
+        if (isThereBody)
+        {
+            // If body is provided as a string, parse it into a statement and create a block. Otherwise, create an empty block.
+            if (!string.IsNullOrEmpty(body))
+                block = SyntaxFactory.Block(SyntaxFactory.ParseStatement(body));
+            methodSytax = block != null ? methodSytax.WithBody(block) : methodSytax.WithBody(SyntaxFactory.Block());
+        }
+        else
+            methodSytax = methodSytax.WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+
+        return methodSytax;
+    }
+
     protected ClassDeclarationSyntax ClassDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
     {
         var classSyntax = SyntaxFactory
@@ -332,11 +402,25 @@ public class NLayerGeneratorBase
         return classSyntax;
     }
 
-    protected NamespaceDeclarationSyntax NamespaceDeclaration(string value, ClassDeclarationSyntax[] classes)
+    public InterfaceDeclarationSyntax InterfaceDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
+    {
+        var interfaceSyntax = SyntaxFactory
+            .InterfaceDeclaration(name)
+            .AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
+        if (attributes?.Length > 0)
+            interfaceSyntax = interfaceSyntax.AddAttributeLists(SyntaxFactory.AttributeList(SyntaxFactory.SeparatedList(attributes)));
+        if (baseTypes?.Length > 0)
+            interfaceSyntax = interfaceSyntax.AddBaseListTypes(baseTypes.Select(SyntaxFactory.SimpleBaseType).ToArray());
+        if (members?.Length > 0)
+            interfaceSyntax = interfaceSyntax.AddMembers(members);
+        return interfaceSyntax;
+    }
+
+    protected NamespaceDeclarationSyntax NamespaceDeclaration(string value, MemberDeclarationSyntax[] members)
     {
         return SyntaxFactory
             .NamespaceDeclaration(SyntaxFactory.ParseName(value))
-            .AddMembers(classes);
+            .AddMembers(members); // memebers can be class, interface, enum, struct etc.
     }
 
     protected CompilationUnitSyntax CompilationUnit(string[] usings, NamespaceDeclarationSyntax nspace)
@@ -372,17 +456,15 @@ public class NLayerGeneratorBase
         );
     }
 
-    protected static ConstructorDeclarationSyntax ConstructorDecleration(SyntaxKind[] modifiers, string name, (string type, string name)[]? parameters = null, string[]? baseArgs = null, StatementSyntax[]? statements = null)
+    protected static ConstructorDeclarationSyntax ConstructorDecleration(SyntaxKind[] modifiers, string name, ParameterSyntax[]? parameters = null, string[]? baseArgs = null, StatementSyntax[]? statements = null)
     {
         var constructorSyntax = SyntaxFactory
             .ConstructorDeclaration(name)
             .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword));
 
         if (parameters?.Length > 0)
-        {
-            var arrOfParams = parameters.Select(p => SyntaxFactory.Parameter(SyntaxFactory.Identifier(p.name)).WithType(SyntaxFactory.ParseTypeName(p.name))).ToArray();
-            constructorSyntax = constructorSyntax.AddParameterListParameters(arrOfParams);
-        }
+            constructorSyntax = constructorSyntax.AddParameterListParameters(parameters);
+        
         if (baseArgs != null)
         {
             var arrOfBaseArgs = baseArgs.Select(arg => SyntaxFactory.Argument(SyntaxFactory.IdentifierName(arg))).ToArray();

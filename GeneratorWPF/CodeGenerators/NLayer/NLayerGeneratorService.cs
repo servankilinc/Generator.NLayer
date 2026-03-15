@@ -57,7 +57,7 @@ public class NLayerGeneratorService
             log(NLayerCoreService.AddPackage("AutoMapper --version 14.0.0", _appSetting.CoreLayerProjectName));
             log(NLayerCoreService.AddPackage("FluentValidation --version 12.1.1", _appSetting.CoreLayerProjectName));
             log(NLayerCoreService.AddPackage("FluentValidation.DependencyInjectionExtensions --version 12.1.1", _appSetting.CoreLayerProjectName));
-            log(NLayerCoreService.AddPackage("Microsoft.EntityFrameworkCore --version 10.0.3", _appSetting.CoreLayerProjectName)); 
+            log(NLayerCoreService.AddPackage("Microsoft.EntityFrameworkCore --version 10.0.4", _appSetting.CoreLayerProjectName));
             log(NLayerCoreService.AddPackage("Newtonsoft.Json --version 13.0.4", _appSetting.CoreLayerProjectName));
             log(NLayerCoreService.AddPackage("Serilog.AspNetCore --version 10.0.0", _appSetting.CoreLayerProjectName));
             log(NLayerCoreService.AddPackage("Serilog.Sinks.Async --version 2.1.0", _appSetting.CoreLayerProjectName));
@@ -68,7 +68,7 @@ public class NLayerGeneratorService
 
             // 3. Files
             log(NLayerCoreService.GenerateStaticFiles("Core", _appSetting.CoreLayerProjectName));
-            
+
             return true;
         }
         catch (Exception ex)
@@ -86,7 +86,7 @@ public class NLayerGeneratorService
                 throw new Exception("App Settings Not Completted To Generate!");
 
             var NLayerModelService = new NLayerModelGenerator(_appSetting);
-             
+
             // 1. Create Core Class Library if not exists
             log(NLayerModelService.CreateClassLibrearyProject(_appSetting.ModelLayerProjectName, referances: [$"../{_appSetting.CoreLayerProjectName}/{_appSetting.CoreLayerProjectName}.csproj"]));
 
@@ -123,28 +123,29 @@ public class NLayerGeneratorService
 
             var nLayerDataAccessService = new NLayerDataAccessGenerator(_appSetting);
 
-            string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
-
             // 1. Create Core Class Library if not exists
-            log(nLayerDataAccessService.CreateProject(solutionPath, _appSetting.SolutionName));
+            log(nLayerDataAccessService.CreateClassLibrearyProject(_appSetting.DataAccessLayerProjectName, referances: [$"../{_appSetting.ModelLayerProjectName}/{_appSetting.ModelLayerProjectName}.csproj"]));
 
-            // 2. Repository Base
-            log(nLayerDataAccessService.GenerateRepositoryBase(solutionPath));
+            // 2. Add Packages
+            log(nLayerDataAccessService.AddPackage("Microsoft.AspNetCore.Identity.EntityFrameworkCore --version 10.0.4", _appSetting.DataAccessLayerProjectName));
+            log(nLayerDataAccessService.AddPackage("Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.DataAccessLayerProjectName));
+            log(nLayerDataAccessService.AddPackage("Microsoft.EntityFrameworkCore.SqlServer --version 10.0.4", _appSetting.DataAccessLayerProjectName));
+            log(nLayerDataAccessService.AddPackage("Microsoft.EntityFrameworkCore.Tools --version 10.0.4", _appSetting.DataAccessLayerProjectName));
 
-            // 3. Interceptors
-            log(nLayerDataAccessService.GenerateInterceptors(solutionPath));
+            // 3. Files
+            log(nLayerDataAccessService.GenerateStaticFiles("DataAccess", _appSetting.DataAccessLayerProjectName));
 
-            // 4. Servises
-            log(nLayerDataAccessService.GenerateServices(solutionPath));
-
+            // 4. Repository Services
+            log(nLayerDataAccessService.GenerateRepositories());
+ 
             // 5. UOW
-            log(nLayerDataAccessService.GenerateUOW(solutionPath));
+            log(nLayerDataAccessService.GenerateUOW());
 
             // 6. Context Fiel
-            log(nLayerDataAccessService.GenerateContext(solutionPath));
+            log(nLayerDataAccessService.GenerateContext());
 
             // 7. Service Registrations
-            log(nLayerDataAccessService.GenerateServiceRegistrations(solutionPath));
+            log(nLayerDataAccessService.GenerateServiceRegistration());
 
             return true;
         }
