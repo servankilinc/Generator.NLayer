@@ -105,6 +105,37 @@ public class RepositoryBase<TEntity, TContext> : IRepository<TEntity>, IReposito
         _context.SaveChanges();
     }
     #endregion
+    
+    #region Restore
+    public void Restore(Expression<Func<TEntity, bool>> where)
+    {
+        var entities = _context.Set<TEntity>().Where(where).ToList();
+        foreach (var entity in entities)
+        {
+            if (entity is ISoftDeletableEntity softDeletableEntity)
+            {
+                softDeletableEntity.IsDeleted = false;
+                softDeletableEntity.DeletedBy = null;
+                softDeletableEntity.DeletedDateUtc = null;
+            }
+        }
+    }
+
+    public void RestoreAndSave(Expression<Func<TEntity, bool>> where)
+    {
+        var entities = _context.Set<TEntity>().Where(where).ToList();
+        foreach (var entity in entities)
+        {
+            if (entity is ISoftDeletableEntity softDeletableEntity)
+            {
+                softDeletableEntity.IsDeleted = false;
+                softDeletableEntity.DeletedBy = null;
+                softDeletableEntity.DeletedDateUtc = null;
+            }
+        }
+        _context.SaveChanges();
+    }
+    #endregion
 
     #region IsExist & Count
     public bool IsExist(Filter? filter = null, Expression<Func<TEntity, bool>>? where = null, bool ignoreFilters = false)
@@ -526,6 +557,23 @@ public class RepositoryBase<TEntity, TContext> : IRepository<TEntity>, IReposito
     {
         var entitiesToDelete = _context.Set<TEntity>().Where(where);
         _context.Set<TEntity>().RemoveRange(entitiesToDelete);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+    #endregion
+    
+    #region Restore
+    public async Task RestoreAndSaveAsync(Expression<Func<TEntity, bool>> where, CancellationToken cancellationToken = default)
+    {
+        var entities = await _context.Set<TEntity>().Where(where).ToListAsync(cancellationToken);
+        foreach (var entity in entities)
+        {
+            if (entity is ISoftDeletableEntity softDeletableEntity)
+            {
+                softDeletableEntity.IsDeleted = false;
+                softDeletableEntity.DeletedBy = null;
+                softDeletableEntity.DeletedDateUtc = null;
+            }
+        }
         await _context.SaveChangesAsync(cancellationToken);
     }
     #endregion

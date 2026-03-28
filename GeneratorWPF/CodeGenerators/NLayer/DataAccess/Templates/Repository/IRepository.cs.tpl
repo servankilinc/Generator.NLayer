@@ -31,6 +31,11 @@ public interface IRepository<TEntity> where TEntity : IEntity
     void Delete(Expression<Func<TEntity, bool>> where);
     void DeleteAndSave(Expression<Func<TEntity, bool>> where);
     #endregion
+    
+    #region Restore
+    void Restore(Expression<Func<TEntity, bool>> where);
+    void RestoreAndSave(Expression<Func<TEntity, bool>> where);
+    #endregion
 
     #region IsExist & Count
     bool IsExist(Filter? filter = null, Expression<Func<TEntity, bool>>? where = null, bool ignoreFilters = false);
