@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Scriban;
 using System.Diagnostics;
+using System.Dynamic;
 using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -82,7 +83,7 @@ public class NLayerGeneratorBase
     }
     #endregion
 
-    public string GenerateStaticFiles(string layerName, string layerProjectName)
+    public string GenerateStaticFiles(string layerName, string layerProjectName, object? extendedOptions = null)
     {
         List<string> resultLogs = new List<string>();
 
@@ -107,15 +108,25 @@ public class NLayerGeneratorBase
 
             string template = File.ReadAllText(resourcePath);
 
-            var model = new
+            IDictionary<string, object> dict = new Dictionary<string, object>
             {
-                core_project_name = _appSetting.CoreLayerProjectName,
-                model_project_name = _appSetting.ModelLayerProjectName,
-                dataAccess_project_name = _appSetting.DataAccessLayerProjectName,
-                business_project_name = _appSetting.BusinessLayerProjectName,
+                ["core_project_name"] = _appSetting.CoreLayerProjectName,
+                ["model_project_name"] = _appSetting.ModelLayerProjectName,
+                ["dataAccess_project_name"] = _appSetting.DataAccessLayerProjectName,
+                ["business_project_name"] = _appSetting.BusinessLayerProjectName
             };
 
-            string content = ScribanRender(template, model);
+            if (extendedOptions != null)
+            {
+                foreach (var prop in extendedOptions.GetType().GetProperties())
+                {
+                    var value = prop.GetValue(extendedOptions);
+                    if (value != null)
+                        dict[prop.Name] = value;
+                }
+            }
+
+            string content = ScribanRender(template, dict);
 
             resultLogs.Add(AddFile(folderPath, fileName, content));
         }
@@ -288,7 +299,7 @@ public class NLayerGeneratorBase
         var parameter = SyntaxFactory
             .Parameter(SyntaxFactory.Identifier(name))
             .WithType(SyntaxFactory.ParseTypeName(type));
-        
+
         if (modifiers?.Length > 0)
             parameter = parameter.AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
 
@@ -402,17 +413,19 @@ public class NLayerGeneratorBase
         return classSyntax;
     }
 
-    public InterfaceDeclarationSyntax InterfaceDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
+    protected InterfaceDeclarationSyntax InterfaceDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
     {
         var interfaceSyntax = SyntaxFactory
             .InterfaceDeclaration(name)
             .AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
+
         if (attributes?.Length > 0)
             interfaceSyntax = interfaceSyntax.AddAttributeLists(SyntaxFactory.AttributeList(SyntaxFactory.SeparatedList(attributes)));
         if (baseTypes?.Length > 0)
             interfaceSyntax = interfaceSyntax.AddBaseListTypes(baseTypes.Select(SyntaxFactory.SimpleBaseType).ToArray());
         if (members?.Length > 0)
             interfaceSyntax = interfaceSyntax.AddMembers(members);
+
         return interfaceSyntax;
     }
 
@@ -434,7 +447,7 @@ public class NLayerGeneratorBase
 
     protected ClassDeclarationSyntax ValidatorClassDeclaration(string modelName, string[] ruleList)
     {
-        var constructor = ConstructorDecleration(
+        var constructor = ConstructorDeclaration(
             modifiers: [SyntaxKind.PublicKeyword],
             name: $"{modelName}Validator",
             statements: ruleList.Select(rule => SyntaxFactory.ParseStatement(rule)).ToArray()
@@ -456,7 +469,7 @@ public class NLayerGeneratorBase
         );
     }
 
-    protected static ConstructorDeclarationSyntax ConstructorDecleration(SyntaxKind[] modifiers, string name, ParameterSyntax[]? parameters = null, string[]? baseArgs = null, StatementSyntax[]? statements = null)
+    protected static ConstructorDeclarationSyntax ConstructorDeclaration(SyntaxKind[] modifiers, string name, ParameterSyntax[]? parameters = null, string[]? baseArgs = null, StatementSyntax[]? statements = null, BlockSyntax? block = null)
     {
         var constructorSyntax = SyntaxFactory
             .ConstructorDeclaration(name)
@@ -464,7 +477,7 @@ public class NLayerGeneratorBase
 
         if (parameters?.Length > 0)
             constructorSyntax = constructorSyntax.AddParameterListParameters(parameters);
-        
+
         if (baseArgs != null)
         {
             var arrOfBaseArgs = baseArgs.Select(arg => SyntaxFactory.Argument(SyntaxFactory.IdentifierName(arg))).ToArray();
@@ -474,7 +487,7 @@ public class NLayerGeneratorBase
                     .AddArgumentListArguments(arrOfBaseArgs));
         }
 
-        constructorSyntax = constructorSyntax.WithBody(statements != null ? SyntaxFactory.Block(statements) : SyntaxFactory.Block());
+        constructorSyntax = constructorSyntax.WithBody(statements != null ? SyntaxFactory.Block(statements) : block != null ? block : SyntaxFactory.Block());
 
         return constructorSyntax;
     }

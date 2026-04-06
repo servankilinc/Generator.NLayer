@@ -278,7 +278,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                             ? [SyntaxFactory.ParseTypeName($"IdentityDbContext<{IdentityUserType}, {IdentityRoleType}, {IdentityKeyType}>")]
                             : [SyntaxFactory.ParseTypeName("DbContext")],
                         members: [
-                            ConstructorDecleration(
+                            ConstructorDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword],
                                 name: "AppDbContext",
                                 parameters: [ParameterDeclaration("DbContextOptions<AppDbContext>", "options")],
@@ -418,7 +418,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                             SyntaxFactory.ParseTypeName($"I{entityName}Repository")
                         ],
                         members: [
-                            ConstructorDecleration(
+                            ConstructorDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword],
                                 name: $"{entityName}Repository",
                                 parameters: [ParameterDeclaration("AppDbContext", "context")],
@@ -445,7 +445,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction")
         };
 
-        var constructor = ConstructorDecleration(
+        var constructor = ConstructorDeclaration(
             modifiers: [SyntaxKind.PublicKeyword],
             name: "UnitOfWork",
             parameters: [

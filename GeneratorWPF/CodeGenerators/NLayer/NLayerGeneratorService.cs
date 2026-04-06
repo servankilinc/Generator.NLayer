@@ -13,11 +13,15 @@ namespace GeneratorWPF.CodeGenerators.NLayer;
 
 public class NLayerGeneratorService
 {
+    private readonly EntityRepository _entityRepository;
+    private readonly FieldRepository _fieldRepository;
     private readonly AppSettingsRepository _appSettingsRepository;
     private readonly AppSetting _appSetting;
     public NLayerGeneratorService()
     {
-        _appSettingsRepository = new AppSettingsRepository();
+        _entityRepository = new();
+        _fieldRepository = new();
+        _appSettingsRepository = new();
         _appSetting = _appSettingsRepository.Get(f => f.Id == 1);
     }
 
@@ -165,22 +169,20 @@ public class NLayerGeneratorService
 
             var nLayerBusinessService = new NLayerBusinessGenerator(_appSetting);
 
-            string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
-
             // 1. Create Core Class Library if not exists
-            log(nLayerBusinessService.CreateProject(solutionPath, _appSetting.SolutionName));
+            log(nLayerBusinessService.CreateClassLibrearyProject(_appSetting.BusinessLayerProjectName, referances: [$"../{_appSetting.DataAccessLayerProjectName}/{_appSetting.DataAccessLayerProjectName}.csproj"]));
 
-            // 2. Service Base
-            log(nLayerBusinessService.GenerateServiceBase(solutionPath));
+            // 2. Static Files(Utils.TokenService)
+            log(nLayerBusinessService.GenerateStaticFiles("Business", _appSetting.BusinessLayerProjectName, new
+            {
+                identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository)
+            }));
 
-            // 3. Utils
-            log(nLayerBusinessService.GenerateUtils(solutionPath));
-
-            // 4. Mappings
-            log(nLayerBusinessService.GenerateMappings(solutionPath));
+            // 3. Mappings
+            log(nLayerBusinessService.GenerateMappings());
 
             // 5. Concretes
-            log(nLayerBusinessService.GeneraterService(solutionPath));
+            log(nLayerBusinessService.GeneraterService());
 
             // 6. Service Registrations
             log(nLayerBusinessService.GenerateServiceRegistrations(solutionPath));

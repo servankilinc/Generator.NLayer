@@ -1,4 +1,5 @@
 ﻿using GeneratorWPF.Models.Signature;
+using Humanizer;
 
 namespace GeneratorWPF.Models
 {
@@ -18,5 +19,22 @@ namespace GeneratorWPF.Models
         public virtual ICollection<Entity> ReportEntities { get; set; } = null!;
         public virtual ICollection<Entity> BasicResponseEntities { get; set; } = null!;
         public virtual ICollection<Entity> DetailResponseEntities { get; set; } = null!;
+
+
+
+
+
+        public string ServiceGetListMethodName(Entity entity)
+        {
+            return  this.Id == entity.BasicResponseDtoId ? "GetBaseListAsync" :
+                    this.Id == entity.DetailResponseDtoId ? "GetDetailListAsync" :
+                    $"Get{this.Name}ListAsync";
+        }
+        public string ServiceGetMethodName(Entity entity)
+        {
+            return  this.Id == entity.BasicResponseDtoId ? "GetBaseAsync" :
+                    this.Id == entity.DetailResponseDtoId ? "GetDetailAsync" :
+                    $"Get{this.Name}Async";
+        }
     }
 }
