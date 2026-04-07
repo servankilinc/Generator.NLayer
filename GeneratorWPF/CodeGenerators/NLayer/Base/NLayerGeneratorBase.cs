@@ -313,7 +313,7 @@ public class NLayerGeneratorBase
                 )
             );
 
-        return parameter;
+        return parameter.NormalizeWhitespace();
     }
 
     protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, AttributeSyntax[]? attributes = null)
@@ -350,7 +350,7 @@ public class NLayerGeneratorBase
                 .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
         }
 
-        return property;
+        return property.NormalizeWhitespace();
     }
 
     protected FieldDeclarationSyntax FieldDeclaration(SyntaxKind[] modifiers, string type, string name, bool nullable = false)
@@ -367,7 +367,7 @@ public class NLayerGeneratorBase
         if (modifiers?.Length > 0)
             field = field.AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
 
-        return field;
+        return field.NormalizeWhitespace();
     }
 
     protected MethodDeclarationSyntax MethodDeclaration(string name, string returnType, bool isThereBody = true, SyntaxKind[]? modifiers = null, ParameterSyntax[]? parameters = null, AttributeSyntax[]? attributes = null, BlockSyntax? block = null, string? body = null)
@@ -387,14 +387,20 @@ public class NLayerGeneratorBase
         if (isThereBody)
         {
             // If body is provided as a string, parse it into a statement and create a block. Otherwise, create an empty block.
-            if (!string.IsNullOrEmpty(body))
-                block = SyntaxFactory.Block(SyntaxFactory.ParseStatement(body));
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                block = (BlockSyntax)SyntaxFactory.ParseStatement($$"""
+                {
+                {{body}}
+                }
+                """);
+            }
             methodSytax = block != null ? methodSytax.WithBody(block) : methodSytax.WithBody(SyntaxFactory.Block());
         }
         else
             methodSytax = methodSytax.WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
 
-        return methodSytax;
+        return methodSytax.NormalizeWhitespace();
     }
 
     protected ClassDeclarationSyntax ClassDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
@@ -410,7 +416,7 @@ public class NLayerGeneratorBase
         if (members?.Length > 0)
             classSyntax = classSyntax.AddMembers(members);
 
-        return classSyntax;
+        return classSyntax.NormalizeWhitespace();
     }
 
     protected InterfaceDeclarationSyntax InterfaceDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
@@ -426,14 +432,15 @@ public class NLayerGeneratorBase
         if (members?.Length > 0)
             interfaceSyntax = interfaceSyntax.AddMembers(members);
 
-        return interfaceSyntax;
+        return interfaceSyntax.NormalizeWhitespace();
     }
 
     protected NamespaceDeclarationSyntax NamespaceDeclaration(string value, MemberDeclarationSyntax[] members)
     {
         return SyntaxFactory
             .NamespaceDeclaration(SyntaxFactory.ParseName(value))
-            .AddMembers(members); // memebers can be class, interface, enum, struct etc.
+            .AddMembers(members) // memebers can be class, interface, enum, struct etc.
+            .NormalizeWhitespace();
     }
 
     protected CompilationUnitSyntax CompilationUnit(string[] usings, NamespaceDeclarationSyntax nspace)
@@ -466,7 +473,7 @@ public class NLayerGeneratorBase
                 )
             ],
             members: [constructor]
-        );
+        ).NormalizeWhitespace();
     }
 
     protected static ConstructorDeclarationSyntax ConstructorDeclaration(SyntaxKind[] modifiers, string name, ParameterSyntax[]? parameters = null, string[]? baseArgs = null, StatementSyntax[]? statements = null, BlockSyntax? block = null)
@@ -489,7 +496,7 @@ public class NLayerGeneratorBase
 
         constructorSyntax = constructorSyntax.WithBody(statements != null ? SyntaxFactory.Block(statements) : block != null ? block : SyntaxFactory.Block());
 
-        return constructorSyntax;
+        return constructorSyntax.NormalizeWhitespace();
     }
 
     protected StatementSyntax StatementExpression(string from, string to)
@@ -501,7 +508,7 @@ public class NLayerGeneratorBase
                 SyntaxFactory.IdentifierName(to),
                 SyntaxFactory.IdentifierName(from)
             )
-        );
+        ).NormalizeWhitespace();
     }
     #endregion
 

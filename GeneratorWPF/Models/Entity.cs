@@ -39,6 +39,20 @@ namespace GeneratorWPF.Models
             return String.Join(", ", Fields.Where(f => f.IsUnique).Select(f => $"{f.GetMapedTypeName()} {f.Name.ToCamelCase()}").ToArray());
         }
 
+        public string WhereRule(List<Field> uniqueFields, string? sourceName = null)
+        {
+            bool hasSource = !string.IsNullOrWhiteSpace(sourceName);
+            sourceName = hasSource ? sourceName!.Trim() : "";
+
+            var conditions = uniqueFields.Select(f =>
+            {
+                var right = hasSource ? $"{sourceName}.{f.Name}" : f.Name.ToCamelCase();
+                return $"f.{f.Name} == {right}";
+            });
+
+            return $"where: (f) => {string.Join(" && ", conditions)}";
+        }
+
         public Field? GetSelectListTextField()
         {
             if (this.Fields == default || this.Fields.Any() == false) return default;
