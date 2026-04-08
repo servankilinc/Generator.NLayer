@@ -74,16 +74,22 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     .Include(x => x.DtoFields).ThenInclude(ti => ti.SourceField)
                     .Include(x => x.RelatedEntity).ThenInclude(ti => ti.Fields));
 
+            List<string> dtoUsings = new();
+            if (dtos.Any(f => f.CrudTypeId != (byte)CrudTypeEnums.Read))
+                dtoUsings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands");
+            if (dtos.Any(f => f.CrudTypeId == (byte)CrudTypeEnums.Read))
+                dtoUsings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Queries");
+            
             var code_abstract = CompilationUnit(
                 usings: [
-                    $"{_appSetting.CoreLayerProjectName}.BaseRequestModels",              
+                    "System.Linq.Expressions",
+                    "Microsoft.AspNetCore.Mvc.Rendering",
+                    $"{_appSetting.CoreLayerProjectName}.BaseRequestModels",
                     $"{_appSetting.CoreLayerProjectName}.Utils.Datatable",
                     $"{_appSetting.CoreLayerProjectName}.Utils.Pagination",
                     $"{_appSetting.CoreLayerProjectName}.Utils.ResultPattern",
-                    $"{_appSetting.BusinessLayerProjectName}.Dtos.{entity.Name}.Commands",
-                    $"{_appSetting.BusinessLayerProjectName}.Dtos.{entity.Name}.Queries",
-                    $"{_appSetting.BusinessLayerProjectName}.Entities",
-                    "System.Linq.Expressions"
+                    $"{_appSetting.ModelLayerProjectName}.Entities",
+                    ..dtoUsings
                 ],
                 nspace: NamespaceDeclaration(
                     value: $"{_appSetting.BusinessLayerProjectName}.Abstract",
@@ -95,12 +101,40 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                         )
                     ]
                 )
-            ).ToFullString();
+            );
 
-            string code_concrete = roslynBusinessServiceGenerator.GeneraterConcrete(entity, dtos);
+            var code_concrete = CompilationUnit(
+                usings: [
+                    "AutoMapper",
+                    "System.Linq.Expressions",
+                    "Microsoft.EntityFrameworkCore",
+                    "Microsoft.AspNetCore.Mvc.Rendering",
+                    $"{_appSetting.BusinessLayerProjectName}.Abstract",
+                    $"{_appSetting.CoreLayerProjectName}.BaseRequestModels",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.Datatable",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.Pagination",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.ResultPattern",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.Validation",
+                    $"{_appSetting.DataAccessLayerProjectName}.Abstract",
+                    $"{_appSetting.DataAccessLayerProjectName}.UoW",
+                    $"{_appSetting.ModelLayerProjectName}.Entities",
+                    ..dtoUsings
+                ],
+                nspace: NamespaceDeclaration(
+                    value: $"{_appSetting.BusinessLayerProjectName}.Concrete",
+                    members: [
+                        ClassDeclaration(
+                            name: $"{entity.Name}Service",
+                            modifiers: [SyntaxKind.PublicKeyword],
+                            baseTypes: [SyntaxFactory.ParseTypeName($"I{entity.Name}Service")],
+                            members: [..GenerateConcreteMethods(entity, dtos)]
+                        )
+                    ]
+                )
+            );
 
-            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Service", code_abstract));
-            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Service", code_concrete));
+            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Service", code_abstract.ToFullString()));
+            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Service", code_concrete.ToFullString()));
         }
 
         if (_appSetting.IsThereIdentiy)
@@ -580,7 +614,7 @@ public interface IAuthService
                 returnType: $"Task<Result>",
                 parameters: [
                     ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
-                            ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
