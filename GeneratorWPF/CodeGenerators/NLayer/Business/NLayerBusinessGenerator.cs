@@ -1,5 +1,4 @@
-﻿using Azure.Core;
-using Generator.NTier.CodeGenerators.NLayer.Business.Helpers;
+﻿using Generator.NTier.CodeGenerators.NLayer.Business.Helpers;
 using GeneratorWPF.CodeGenerators.NLayer.Base;
 using GeneratorWPF.Extensions;
 using GeneratorWPF.Models;
@@ -9,10 +8,8 @@ using Humanizer;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.EntityFrameworkCore;
-using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Xml.Linq;
 
 namespace GeneratorWPF.CodeGenerators.NLayer.Business;
 
@@ -50,7 +47,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 ]
             )
         ).ToFullString();
-        
+
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Mappings");
         return AddFile(folderPath, "MappingProfiles", code);
     }
@@ -58,8 +55,6 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
     public string GeneraterService()
     {
         var results = new List<string>();
-
-        var roslynBusinessServiceGenerator = new RoslynBusinessServiceGenerator(_appSetting);
 
         string folderPathAbstract = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Abstract");
         string folderPathConcrete = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Concrete");
@@ -79,7 +74,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 dtoUsings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands");
             if (dtos.Any(f => f.CrudTypeId == (byte)CrudTypeEnums.Read))
                 dtoUsings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Queries");
-            
+
             var code_abstract = CompilationUnit(
                 usings: [
                     "System.Linq.Expressions",
@@ -139,32 +134,151 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         if (_appSetting.IsThereIdentiy)
         {
-            string code_IAuthService = @"using Model.Auth.Login;
-using Model.Auth.RefreshAuth;
-using Model.Auth.SignUp;
+            var code_IAuthService = CompilationUnit(
+                usings: [
+                    $"{_appSetting.CoreLayerProjectName}.Utils.ResultPattern",
+                    $"{_appSetting.ModelLayerProjectName}.Dtos.Auth.Login",
+                    $"{_appSetting.ModelLayerProjectName}.Dtos.Auth.Refresh",
+                    $"{_appSetting.ModelLayerProjectName}.Dtos.Auth.SignUp",
+                ],
+                nspace: NamespaceDeclaration(
+                    value: $"{_appSetting.BusinessLayerProjectName}.Abstract",
+                    members: [
+                        InterfaceDeclaration(
+                            name: "IAuthService",
+                            modifiers: [SyntaxKind.PublicKeyword],
+                            members: [
+                                MethodDeclaration(
+                                    name: "LoginAsync",
+                                    returnType: $"Task<Result<LoginResponse>>",
+                                    parameters: [
+                                        ParameterDeclaration("LoginRequest", "loginRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                    ],
+                                    isThereBody: false
+                                ),
+                                MethodDeclaration(
+                                    name: "SignUpAsync",
+                                    returnType: $"Task<Result<SignUpResponse>>",
+                                    parameters: [
+                                        ParameterDeclaration("SignUpRequest", "signUpRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                    ],
+                                    isThereBody: false
+                                ),
+                                MethodDeclaration(
+                                    name: "RefreshAsync",
+                                    returnType: $"Task<Result<RefreshAuthResponse>>",
+                                    parameters: [
+                                        ParameterDeclaration("RefreshRequest", "refreshAuthRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                    ],
+                                    isThereBody: false
+                                )
+                            ]
+                        )
+                    ]
+                )
+            );
 
-namespace Business.Abstract;
-
-public interface IAuthService
-{
-    Task<LoginResponse> LoginAsync(LoginRequest loginRequest, CancellationToken cancellationToken = default);
-    Task<SignUpResponse> SignUpAsync(SignUpRequest signUpRequest, CancellationToken cancellationToken = default);
-    Task<RefreshAuthResponse> RefreshAuthAsync(RefreshAuthRequest refreshAuthRequest, CancellationToken cancellationToken = default);
-    Task LoginWebBaseAsync(LoginRequest loginRequest, CancellationToken cancellationToken = default);
-    Task SignUpWebBaseAsync(SignUpRequest signUpRequest, CancellationToken cancellationToken = default);
-}";
-
-            results.Add(AddFile(folderPathAbstract, "IAuthService", code_IAuthService));
 
 
-            string code_AuthService = roslynBusinessServiceGenerator.GeneraterAuthServiceConcrete();
+            string code_AuthService = CompilationUnit(
+                usings: [
+                    $"AutoMapper",
+                    $"System.Security.Claims",
+                    $"Microsoft.AspNetCore.Identity",
+                    $"{_appSetting.CoreLayerProjectName}.Enums",
+                    $"{_appSetting.CoreLayerProjectName}.Utils",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.Auth",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.HttpContextManager",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.ResultPattern",
+                    $"{_appSetting.CoreLayerProjectName}.Utils.Validation",
+                    $"{_appSetting.DataAccessLayerProjectName}.UoW",
+                    $"{_appSetting.ModelLayerProjectName}.Auth.Login",
+                    $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
+                    $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
+                    $"{_appSetting.ModelLayerProjectName}.Entities",
+                    $"{_appSetting.BusinessLayerProjectName}.Abstract",
+                    $"{_appSetting.BusinessLayerProjectName}.Utils.TokenService",
+                    $"{_appSetting.ModelLayerProjectName}.Dtos.{_appSetting.GetIdentityModelTypeNames().}.Commands",
 
+                ]    
+            );
+
+            results.Add(AddFile(folderPathAbstract, "IAuthService", code_IAuthService.ToFullString()));
             results.Add(AddFile(folderPathConcrete, "AuthService", code_AuthService));
         }
 
         return string.Join("\n", results);
     }
 
+    public string GenerateServiceRegistrations()
+    {
+        var entities = _entityRepository.GetAll(f => f.Control == false);
+
+        #region Usings
+        List<string> usings = new()
+        {
+            "Microsoft.Extensions.DependencyInjection",
+            "Microsoft.Extensions.Configuration",
+            $"{_appSetting.BusinessLayerProjectName}.Abstract",
+            $"{_appSetting.BusinessLayerProjectName}.Concrete"
+        };
+        if (_appSetting.IsThereIdentiy)
+        {
+            usings.Add($"{_appSetting.BusinessLayerProjectName}.Utils.TokenService");
+        }
+        #endregion
+
+        #region Body
+        StringBuilder sbBody = new();
+        if (_appSetting.IsThereIdentiy)
+        {
+            sbBody.AppendLine("services.AddSingleton<ITokenService, TokenService>();");
+            sbBody.AppendLine("services.AddScoped<IAuthService, AuthService>();");
+            sbBody.AppendLine();
+        }
+        sbBody.AppendLine("#region ENTITY SERVICES");
+        foreach (var entity in entities)
+        {
+            sbBody.AppendLine($"services.AddScoped<I{entity.Name}Service, {entity.Name}Service>();");
+        }
+        sbBody.AppendLine("#endregion");
+        sbBody.AppendLine();
+        sbBody.AppendLine("return services;"); 
+        #endregion
+
+        var code = CompilationUnit(
+            usings: [..usings],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.BusinessLayerProjectName}",
+                members: [
+                    ClassDeclaration(
+                        name: "ServiceRegistration",
+                        modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
+                        members: [
+                            MethodDeclaration(
+                                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
+                                name: "AddBusinessServices",
+                                returnType: "IServiceCollection",
+                                parameters: [
+                                    ParameterDeclaration("IServiceCollection", "services", true, [SyntaxKind.ThisKeyword]),
+                                    ParameterDeclaration("IConfiguration", "configuration", true)
+                                ],
+                                body: sbBody.ToString()
+                            )
+                        ]
+                    )
+                ]
+            )
+        );
+         
+        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName); 
+        return AddFile(folderPath, "ServiceRegistration", code.ToFullString());
+    }
+
+    #region Service Methods
     private List<MethodDeclarationSyntax> GenerateAbstractMethods(Entity entity, List<Dto> dtos)
     {
         var methods = new List<MethodDeclarationSyntax>();
@@ -179,7 +293,7 @@ public interface IAuthService
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
-            parameters: [ 
+            parameters: [
                 ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
                 ParameterDeclaration("CancellationToken", "cancellationToken", false)
             ],
@@ -196,7 +310,7 @@ public interface IAuthService
             isThereBody: false
         ));
 
-        foreach (var dto in dtos.Where(f=> f.CrudTypeId == (int)CrudTypeEnums.Read))
+        foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)CrudTypeEnums.Read))
         {
             methods.Add(MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
@@ -323,7 +437,8 @@ public interface IAuthService
             isThereBody: false
         ));
 
-        if (entity.SoftDeletable) { 
+        if (entity.SoftDeletable)
+        {
             methods.Add(MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "RestoreAsync",
@@ -548,7 +663,8 @@ public interface IAuthService
 
         #region CREATE
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
-        if (createDto != null) { 
+        if (createDto != null)
+        {
             methods.Add(MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "CreateAsync",
@@ -652,142 +768,188 @@ public interface IAuthService
         }
         #endregion
 
-        #region DELETE & RESTORE
+        #region DELETE
         var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
-        methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-            name: "DeleteAsync",
-            returnType: $"Task<Result>",
-            parameters:
-                deleteDto != null ? [
+        if (deleteDto != null)
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DeleteAsync",
+                returnType: $"Task<Result>",
+                parameters:
+                [
                     ParameterDeclaration(deleteDto.Name, "request", true) ,
                     ParameterDeclaration("CancellationToken", "cancellationToken", false)
-                ] :
+                ],
+                body: $@"
+                    var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
+                    if (!validationResult.IsValid)
+                        return Result.Validation(validationResult.Failures, description: $""Validation failed for {deleteDto!.Name}"");
+                
+                    await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({entity.WhereRule(uniqueFields, "request")}, cancellationToken);
+                    return Result.Success();
+                "
+            ));
+        }
+        else
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DeleteAsync",
+                returnType: $"Task<Result>",
+                parameters:
                 [
                     ..uniqueFieldParameters,
                     ParameterDeclaration("CancellationToken", "cancellationToken", false)
                 ],
-            isThereBody: false
-        ));
+                body: $@"
+                    await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({entity.WhereRule(uniqueFields)}, cancellationToken);
+                    return Result.Success();
+                "
+            ));
+        }
+        #endregion
 
-        methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-            name: "RestoreAsync",
-            returnType: $"Task<Result>",
-            parameters: [
-                ..uniqueFieldParameters,
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
-            ],
-            isThereBody: false
-        ));
+        #region RESTORE
+        if (entity.SoftDeletable)
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "RestoreAsync",
+                returnType: $"Task<Result>",
+                parameters: [
+                    ..uniqueFieldParameters,
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    await _unitOfWork.{entity.Name.Pluralize()}.RestoreAndSaveAsync({entity.WhereRule(uniqueFields)}, cancellationToken);
+                    return Result.Success();
+                "
+            ));
+        }
         #endregion
 
         #region PAGINATION
-        methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-            name: "PaginationAsync",
-            returnType: $"Task<Result<PaginationResponse<{reportDto?.Name ?? entity.Name}>>>",
-            parameters: [
-                ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
-            ],
-            isThereBody: false
-        ));
+        if (reportDto != null)
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "PaginationAsync",
+                returnType: $"Task<Result<PaginationResponse<{reportDto.Name}>>>",
+                parameters: [
+                    ParameterDeclaration("DynamicPaginationRequest", "request", true),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    var result = await _unitOfWork.{entity.Name.Pluralize()}.PaginationAsync<{reportDto.Name}>(
+                        configurationProvider: _mapper.ConfigurationProvider,
+                        paginationRequest: request,
+                        {entity.IncludeRule(reportDto, _dtoFieldRepository)},
+                        cancellationToken: cancellationToken
+                    );
+                    return Result<PaginationResponse<{reportDto.Name}>>.Success(result);
+                "
+            ));
+        }
+        else
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "PaginationAsync",
+                returnType: $"Task<Result<PaginationResponse<{entity.Name}>>>",
+                parameters: [
+                    ParameterDeclaration("DynamicPaginationRequest", "request", true),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    var result = await _unitOfWork.{entity.Name.Pluralize()}.PaginationAsync(
+                        paginationRequest: request,
+                        cancellationToken: cancellationToken
+                    );
+                    return Result<PaginationResponse<{entity.Name}>>.Success(result);
+                "
+            ));
+        }
         #endregion
 
         #region DATATABLE
-        methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-            name: "DatatableClientSideAsync",
-            returnType: $"Task<Result<DatatableResponseClientSide<{reportDto?.Name ?? entity.Name}>>>",
-            parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
-            ],
-            isThereBody: false
-        ));
-        methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-            name: "DatatableServerSideAsync",
-            returnType: $"Task<Result<DatatableResponseServerSide<{reportDto?.Name ?? entity.Name}>>>",
-            parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
-            ],
-            isThereBody: false
-        ));
+        if (reportDto != null)
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DatatableClientSideAsync",
+                returnType: $"Task<Result<DatatableResponseClientSide<{reportDto.Name}>>>",
+                parameters: [
+                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableClientSideAsync<{reportDto.Name}>(
+                        configurationProvider: _mapper.ConfigurationProvider,
+                        datatableRequest: request,
+                        {entity.IncludeRule(reportDto, _dtoFieldRepository)},
+                        cancellationToken: cancellationToken
+                    );
+                    return Result<DatatableResponseClientSide<{reportDto.Name}>>.Success(result);
+                "
+            ));
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DatatableServerSideAsync",
+                returnType: $"Task<Result<DatatableResponseServerSide<{reportDto.Name}>>>",
+                parameters: [
+                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableServerSideAsync<{reportDto.Name}>(
+                        configurationProvider: _mapper.ConfigurationProvider,
+                        datatableRequest: request,
+                        {entity.IncludeRule(reportDto, _dtoFieldRepository)},
+                        cancellationToken: cancellationToken
+                    );
+                    return Result<DatatableResponseServerSide<{reportDto.Name}>>.Success(result);
+                "
+            ));
+        }
+        else
+        {
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DatatableClientSideAsync",
+                returnType: $"Task<Result<DatatableResponseClientSide<{entity.Name}>>>",
+                parameters: [
+                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableClientSideAsync(
+                        datatableRequest: request,
+                        cancellationToken: cancellationToken
+                    );
+                    return Result<DatatableResponseClientSide<{entity.Name}>>.Success(result);
+                "
+            ));
+            methods.Add(MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DatatableServerSideAsync",
+                returnType: $"Task<Result<DatatableResponseServerSide<{entity.Name}>>>",
+                parameters: [
+                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ],
+                body: $@"
+                    var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableServerSideAsync(
+                        datatableRequest: request,
+                        cancellationToken: cancellationToken
+                    );
+                    return Result<DatatableResponseServerSide<{entity.Name}>>.Success(result);
+                "
+            ));
+        }
         #endregion
 
         return methods;
-    }
-
-    public string GenerateServiceRegistrations(string solutionPath)
-    {
-        var results = new List<string>();
-
-        var entities = _entityRepository.GetAll(f => f.Control == false);
-
-        StringBuilder sb = new();
-        sb.AppendLine("using Autofac;");
-        sb.AppendLine("using Autofac.Extras.DynamicProxy;");
-        sb.AppendLine("using Business.Abstract;");
-        sb.AppendLine("using Business.Concrete;");
-        if (_appSetting.IsThereIdentiy) sb.AppendLine("using Business.Utils.TokenService;");
-        sb.AppendLine("using Core.Utils.CrossCuttingConcerns;");
-        sb.AppendLine();
-        sb.AppendLine("namespace Business;");
-        sb.AppendLine();
-        sb.AppendLine("public class AutofacModule : Module");
-        sb.AppendLine("{");
-        sb.AppendLine("\tprotected override void Load(ContainerBuilder builder)");
-        sb.AppendLine("\t{");
-        if (_appSetting.IsThereIdentiy)
-        {
-            sb.AppendLine($"\t\tbuilder.RegisterType<TokenService>().As<ITokenService>()");
-            sb.AppendLine("\t\t\t.EnableInterfaceInterceptors()");
-            sb.AppendLine("\t\t\t.InterceptedBy(typeof(ExceptionHandlerInterceptor))");
-            sb.AppendLine("\t\t\t.InstancePerLifetimeScope();");
-            sb.AppendLine();
-
-            sb.AppendLine($"\t\tbuilder.RegisterType<AuthService>().As<IAuthService>()");
-            sb.AppendLine("\t\t\t.EnableInterfaceInterceptors()");
-            sb.AppendLine("\t\t\t.InterceptedBy(typeof(ValidationInterceptor), typeof(ExceptionHandlerInterceptor))");
-            sb.AppendLine("\t\t\t.InstancePerLifetimeScope();");
-            sb.AppendLine();
-        }
-        sb.AppendLine("\t\t// ***** Entity Services *****");
-        foreach (var entity in entities)
-        {
-            sb.AppendLine($"\t\tbuilder.RegisterType<{entity.Name}Service>().As<I{entity.Name}Service>()");
-            sb.AppendLine("\t\t\t.EnableInterfaceInterceptors()");
-            sb.AppendLine("\t\t\t.InterceptedBy(typeof(ValidationInterceptor), typeof(ExceptionHandlerInterceptor), typeof(CacheRemoveInterceptor), typeof(CacheRemoveGroupInterceptor), typeof(CacheInterceptor))");
-            sb.AppendLine("\t\t\t.InstancePerLifetimeScope();");
-            sb.AppendLine();
-        }
-        sb.AppendLine("\t}");
-        sb.AppendLine("}");
-
-        string code_ServiceRegistration = @"using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
-
-namespace Business;
-
-public static class ServiceRegistration
-{
-    public static IServiceCollection AddBusinessServices(this IServiceCollection services, IConfiguration configuration)
-    {
-        services.AddAutoMapper(Assembly.GetExecutingAssembly());
-
-        return services;
-    }
-}";
-
-
-        string folderPath = Path.Combine(solutionPath, "Business");
-        results.Add(AddFile(folderPath, "AutofacModule", sb.ToString()));
-        results.Add(AddFile(folderPath, "ServiceRegistration", code_ServiceRegistration));
-
-        return string.Join("\n", results);
-    }
+    } 
+    #endregion
 }

@@ -1,6 +1,9 @@
 using GeneratorWPF.Extensions;
 using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Models.Signature;
+using GeneratorWPF.Repository;
+using Microsoft.EntityFrameworkCore;
+using System.Text;
 
 namespace GeneratorWPF.Models
 {
@@ -51,6 +54,62 @@ namespace GeneratorWPF.Models
             });
 
             return $"where: (f) => {string.Join(" && ", conditions)}";
+        }
+
+        public string IncludeRule(Dto dto, DtoFieldRepository dtoFieldRepository)
+        {
+            var sb = new StringBuilder();
+            bool firstIncludeWritten = false;
+
+            var dto_DtoFields = dtoFieldRepository.GetAll(f => f.DtoId == dto.Id, include: i => i.Include(x => x.SourceField));
+
+            if (dto_DtoFields != default)
+                dto_DtoFields = dto_DtoFields
+                    .GroupBy(p => p.SourceField.EntityId)
+                    .Select(g => g.First())
+                    .ToList();
+
+            foreach (var dtoField in dto_DtoFields!)
+            {
+                var dtoFieldRelations = dtoFieldRepository.GetDtoFieldRelations(dtoField.Id);
+                if (!dtoFieldRelations.Any()) continue;
+
+                var dfrFirst = dtoFieldRelations.First();
+
+                bool controlOfRelationFirst = dfrFirst.Relation.PrimaryField.EntityId == dto.RelatedEntityId;
+
+                string destPropOfFirst = controlOfRelationFirst ? dfrFirst.Relation.PrimaryEntityVirPropName : dfrFirst.Relation.ForeignEntityVirPropName;
+
+                if (!firstIncludeWritten)
+                {
+                    sb.Append($"i.Include(x => x.{destPropOfFirst})");
+                    firstIncludeWritten = true;
+                }
+                else
+                {
+                    sb.Append($".Include(x => x.{destPropOfFirst})");
+                }
+
+                int lastDestEntityId = controlOfRelationFirst ? dfrFirst.Relation.ForeignField.EntityId : dfrFirst.Relation.PrimaryField.EntityId;
+
+                for (int i = 1; i < dtoFieldRelations.Count; i++)
+                {
+                    var dfr = dtoFieldRelations[i];
+
+                    bool controlOfRelation = dfr.Relation.PrimaryField.EntityId == lastDestEntityId;
+
+                    string destProp = controlOfRelation ? dfr.Relation.PrimaryEntityVirPropName : dfr.Relation.ForeignEntityVirPropName;
+
+                    sb.Append($".ThenInclude(x => x.{destProp})");
+
+                    lastDestEntityId = controlOfRelation ? dfr.Relation.ForeignField.EntityId : dfr.Relation.PrimaryField.EntityId;
+                }
+            }
+
+            if (sb.Length == 0)
+                return "include: null";
+
+            return $"include: i => {sb}";
         }
 
         public Field? GetSelectListTextField()
