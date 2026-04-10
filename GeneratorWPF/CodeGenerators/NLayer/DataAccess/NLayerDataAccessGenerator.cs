@@ -1,14 +1,15 @@
-﻿using GeneratorWPF.CodeGenerators.NLayer.Base;
-using GeneratorWPF.Extensions;
-using GeneratorWPF.Models;
-using GeneratorWPF.Models.Enums;
-using GeneratorWPF.Repository;
-using Humanizer;
-using Microsoft.CodeAnalysis;
+﻿using Humanizer;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.EntityFrameworkCore;
 using System.IO;
+using System.Text;
+using GeneratorWPF.CodeGenerators.NLayer.Base;
+using GeneratorWPF.Extensions;
+using GeneratorWPF.Models;
+using GeneratorWPF.Models.Enums;
+using GeneratorWPF.Repository;
+using Microsoft.CodeAnalysis;
 
 namespace GeneratorWPF.CodeGenerators.NLayer.DataAccess;
 
@@ -24,6 +25,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         _relationRepository = new();
     }
 
+    #region Repository
     public string GenerateRepositories()
     {
         var results = new List<string>();
@@ -48,6 +50,64 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         return string.Join("\n", results);
     }
 
+    private string IRepository(string entityName)
+    {
+        return CompilationUnit(
+            usings: [
+                $"{_appSetting.DataAccessLayerProjectName}.Repository",
+                $"{_appSetting.ModelLayerProjectName}.Entities"
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.DataAccessLayerProjectName}.Abstract",
+                members: [
+                    InterfaceDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: $"I{entityName}Repository",
+                        baseTypes: [
+                            SyntaxFactory.ParseTypeName($"IRepository<{entityName}>"),
+                            SyntaxFactory.ParseTypeName($"IRepositoryAsync<{entityName}>")
+                        ]
+                    )
+                ]
+            )
+        ).ToFullString();
+    }
+
+    private string Repository(string entityName)
+    {
+        return CompilationUnit(
+            usings: [
+                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
+                $"{_appSetting.DataAccessLayerProjectName}.Contexts",
+                $"{_appSetting.DataAccessLayerProjectName}.Repository",
+                $"{_appSetting.ModelLayerProjectName}.Entities"
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.DataAccessLayerProjectName}.Concrete",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: $"{entityName}Repository",
+                        baseTypes: [
+                            SyntaxFactory.ParseTypeName($"RepositoryBase<{entityName}, AppDbContext>"),
+                            SyntaxFactory.ParseTypeName($"I{entityName}Repository")
+                        ],
+                        members: [
+                            ConstructorDeclaration(
+                                modifiers: [SyntaxKind.PublicKeyword],
+                                name: $"{entityName}Repository",
+                                parameters: [ParameterDeclaration("AppDbContext", "context")],
+                                baseArgs: ["context"]
+                            )
+                        ]
+                    )
+                ]
+            )
+        ).ToFullString();
+    }
+    #endregion
+
+    #region UnitOfWork
     public string GenerateUOW()
     {
         var results = new List<string>();
@@ -62,6 +122,245 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         return string.Join("\n", results);
     }
 
+    private string UnitOfWork(List<Entity> entities)
+    {
+        var properties = new List<PropertyDeclarationSyntax>();
+        foreach (var entity in entities)
+            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
+        if (_appSetting.IsThereIdentiy)
+            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
+
+        var fileds = new List<FieldDeclarationSyntax>()
+        {
+            FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context"),
+            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction")
+        };
+
+        var constructor = ConstructorDeclaration(
+            modifiers: [SyntaxKind.PublicKeyword],
+            name: "UnitOfWork",
+            parameters: [
+                ParameterDeclaration("AppDbContext", "context"),
+                ..entities.Select(e => ParameterDeclaration($"I{e.Name}Repository", $"{e.Name}Repository".ToCamelCase(), false)),
+            ],
+            statements: [
+                StatementExpression("_context", "context"),
+                ..entities.Select(e => StatementExpression(e.Name.Pluralize(), $"{e.Name}Repository".ToCamelCase())),
+            ]
+        );
+        if (_appSetting.IsThereIdentiy)
+        {
+            constructor = constructor.AddParameterListParameters(ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository", false));
+            constructor = constructor.AddBodyStatements(StatementExpression("refreshTokens", "RefreshTokens"));
+        }
+
+        var methodsConcrete = new List<MethodDeclarationSyntax>()
+        {
+            #region Syncronous
+		    MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword],
+                name: "SaveChanges",
+                returnType: "int",
+                body: "return _context.SaveChanges();"
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword],
+                name: "BeginTransaction",
+                returnType: "void",
+                body: @"
+                    if (_transaction != null) throw new InvalidOperationException(""Transaction already started for begin transaction."");
+                    _transaction = _context.Database.BeginTransaction();
+                "
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword],
+                name: "CommitTransaction",
+                returnType: "void",
+                body: @"
+                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for commit transaction."");
+                    _transaction.Commit();
+                    _transaction.Dispose();
+                    _transaction = null;
+                "
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword],
+                name : "RollbackTransaction",
+                returnType : "void",
+                body: @"
+                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for rollback."");
+                    _transaction.Rollback();
+                    _transaction.Dispose();
+                    _transaction = null;
+                "
+            ), 
+	        #endregion
+		
+            #region Asyncronous
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "SaveChangesAsync",
+                returnType: "Task<int>",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                body: "return await _context.SaveChangesAsync(cancellationToken);"
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "BeginTransactionAsync",
+                returnType: "Task",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                body: @"
+                    if (_transaction != null) throw new InvalidOperationException(""Transaction already started for begin transaction."");
+                    _transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+                "
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "CommitTransactionAsync",
+                returnType: "Task",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                body: @"
+                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for commit."");
+                    await _transaction.CommitAsync(cancellationToken);
+                    await _transaction.DisposeAsync();
+                    _transaction = null;
+                "
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "RollbackTransactionAsync",
+                returnType : "Task",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                body: @"
+                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for rollback."");
+                    await _transaction.RollbackAsync(cancellationToken);
+                    await _transaction.DisposeAsync();
+                    _transaction = null;    
+                "
+            ), 
+	        #endregion
+		
+            #region Dispose
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword],
+                name: "Dispose",
+                returnType : "void",
+                body: @"
+                    if (_transaction != null)
+                    {
+                        _transaction.Dispose();
+                        _transaction = null;
+                    }
+                    _context.Dispose();
+                "
+            ),
+            MethodDeclaration(
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "DisposeAsync",
+                returnType : "ValueTask",
+                body: @"
+                    if (_transaction != null)
+                    {
+                        await _transaction.DisposeAsync();
+                        _transaction = null;
+                    }
+                    await _context.DisposeAsync();
+                "
+            ) 
+	        #endregion
+        };
+
+        string code_concrete = CompilationUnit(
+            usings: [
+                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
+                $"{_appSetting.DataAccessLayerProjectName}.Contexts",
+                "Microsoft.EntityFrameworkCore.Storage"
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.DataAccessLayerProjectName}.UoW",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: "UnitOfWork",
+                        baseTypes: [SyntaxFactory.ParseTypeName("IUnitOfWork")],
+                        members: [
+                            ..fileds,
+                            ..properties,
+                            constructor,
+                            ..methodsConcrete
+                        ]
+                    )
+                ]
+            )
+        ).ToFullString();
+        return code_concrete;
+    }
+
+    private string IUnitOfWork(List<Entity> entities)
+    {
+        var properties = new List<PropertyDeclarationSyntax>();
+        foreach (var entity in entities)
+            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
+        if (_appSetting.IsThereIdentiy)
+            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
+
+        var abstractMethods = new List<MethodDeclarationSyntax>()
+        {
+            MethodDeclaration(name: "SaveChanges", returnType: "int", isThereBody: false),
+            MethodDeclaration(name : "BeginTransaction", returnType : "void", isThereBody: false),
+            MethodDeclaration(name : "CommitTransaction", returnType : "void", isThereBody: false),
+            MethodDeclaration(name : "RollbackTransaction", returnType : "void", isThereBody: false),
+
+            MethodDeclaration(
+                name: "SaveChangesAsync",
+                returnType: "Task<int>",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                isThereBody: false
+            ),
+            MethodDeclaration(
+                name: "BeginTransactionAsync",
+                returnType: "Task",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                isThereBody: false
+            ),
+            MethodDeclaration(
+                name: "CommitTransactionAsync",
+                returnType: "Task",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                isThereBody: false
+            ),
+            MethodDeclaration(
+                name: "RollbackTransactionAsync",
+                returnType : "Task",
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                isThereBody: false
+            )
+        };
+
+        return CompilationUnit(
+            usings: [$"{_appSetting.DataAccessLayerProjectName}.Abstract"],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.DataAccessLayerProjectName}.UoW",
+                members: [
+                    InterfaceDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: "IUnitOfWork",
+                        baseTypes: [
+                            SyntaxFactory.ParseTypeName("IDisposable"),
+                            SyntaxFactory.ParseTypeName("IAsyncDisposable")
+                        ],
+                        members: [
+                            ..properties,
+                            ..abstractMethods
+                        ]
+                    )
+                ]
+            )
+        ).ToFullString();
+    }
+    #endregion
+
+    #region Context
     public string GenerateContext()
     {
         var results = new List<string>();
@@ -304,19 +603,40 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         return string.Join("\n", results);
     }
 
+    private StatementSyntax RelationOneToOne(char eSc, char f_eSc, Relation relation)
+    {
+        return SyntaxFactory.ParseStatement(
+            @$"{eSc}.HasOne({eSc} => {eSc}.{relation.PrimaryEntityVirPropName})
+                .WithOne({f_eSc} => {f_eSc}.{relation.ForeignEntityVirPropName})
+                .HasForeignKey<{relation.ForeignField.Entity.Name}>({f_eSc} => {f_eSc}.{relation.ForeignField.Name})
+                .OnDelete({relation.GetOnDeleteType()});
+            ");
+    }
+
+    private StatementSyntax RelationOneToMany(char eSc, char f_eSc, Relation relation)
+    {
+        return SyntaxFactory.ParseStatement(
+            @$"{eSc}.HasOne({eSc} => {eSc}.{relation.PrimaryEntityVirPropName})
+            .WithOne({f_eSc} => {f_eSc}.{relation.ForeignEntityVirPropName})
+            .HasForeignKey<{relation.ForeignField.Entity.Name}>({f_eSc} => {f_eSc}.{relation.ForeignField.Name})
+            .OnDelete({relation.GetOnDeleteType()});"
+        );
+    }
+    #endregion
+
+    #region ServiceRegistration
     public string GenerateServiceRegistration()
     {
-        var statements = new List<StatementSyntax>();
+        var sb = new StringBuilder();
 
         var entities = _entityRepository.GetAll(f => f.Control == false);
 
         foreach (var entity in entities)
-            statements.Add(SyntaxFactory.ParseStatement($"services.AddScoped<I{entity.Name}Repository, {entity.Name}Repository>();"));
+            sb.AppendLine($"services.AddScoped<I{entity.Name}Repository, {entity.Name}Repository>();");
         if (_appSetting.IsThereIdentiy)
-            statements.Add(SyntaxFactory.ParseStatement("services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();"));
+            sb.AppendLine("services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();");
 
-
-        statements.Add(SyntaxFactory.ParseStatement(@"
+        sb.AppendLine(@"
             #region DB CONTEXT
             services.AddSingleton<AuditInterceptor>();
             services.AddSingleton<ArchiveInterceptor>();
@@ -334,11 +654,11 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             return services;
-        "));
+        ");
 
         var code = CompilationUnit(
-             usings: [
-                 $"{_appSetting.DataAccessLayerProjectName}.Abstract",
+            usings: [
+                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
                 $"{_appSetting.DataAccessLayerProjectName}.Concrete",
                 $"{_appSetting.DataAccessLayerProjectName}.Contexts",
                 $"{_appSetting.DataAccessLayerProjectName}.Interceptors",
@@ -346,12 +666,11 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                 "Microsoft.EntityFrameworkCore",
                 "Microsoft.Extensions.Configuration",
                 "Microsoft.Extensions.DependencyInjection",
-
-             ],
-             nspace: NamespaceDeclaration(
-                 value: $"{_appSetting.DataAccessLayerProjectName}",
-                 members: [
-                     ClassDeclaration(
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.DataAccessLayerProjectName}",
+                members: [
+                    ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
                         name: "ServiceRegistration",
                         members: [
@@ -363,327 +682,16 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                                     ParameterDeclaration(modifiers: [SyntaxKind.ThisKeyword], type: "IServiceCollection", name: "services"),
                                     ParameterDeclaration(type: "IConfiguration", name: "configuration")
                                 ],
-                                block: SyntaxFactory.Block(statements)
+                                body: sb.ToString()
                             )
                         ]
                     )
-                 ]
+                ]
              )
-         ).ToFullString();
+         );
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName);
-        return AddFile(folderPath, "ServiceRegistration", code);
-    }
-
-    #region Helpers
-    private string IRepository(string entityName)
-    {
-        return CompilationUnit(
-            usings: [
-                $"{_appSetting.DataAccessLayerProjectName}.Repository",
-                $"{_appSetting.ModelLayerProjectName}.Entities"
-            ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.Abstract",
-                members: [
-                    InterfaceDeclaration(
-                        modifiers: [SyntaxKind.PublicKeyword],
-                        name: $"I{entityName}Repository",
-                        baseTypes: [
-                            SyntaxFactory.ParseTypeName($"IRepository<{entityName}>"),
-                            SyntaxFactory.ParseTypeName($"IRepositoryAsync<{entityName}>")
-                        ]
-                    )
-                ]
-            )
-        ).ToFullString();
-    }
-    private string Repository(string entityName)
-    {
-        return CompilationUnit(
-            usings: [
-                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
-                    $"{_appSetting.DataAccessLayerProjectName}.Contexts",
-                    $"{_appSetting.DataAccessLayerProjectName}.Repository",
-                    $"{_appSetting.ModelLayerProjectName}.Entities"
-            ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.Concrete",
-                members: [
-                    ClassDeclaration(
-                        modifiers: [SyntaxKind.PublicKeyword],
-                        name: $"{entityName}Repository",
-                        baseTypes: [
-                            SyntaxFactory.ParseTypeName($"RepositoryBase<{entityName}, AppDbContext>"),
-                            SyntaxFactory.ParseTypeName($"I{entityName}Repository")
-                        ],
-                        members: [
-                            ConstructorDeclaration(
-                                modifiers: [SyntaxKind.PublicKeyword],
-                                name: $"{entityName}Repository",
-                                parameters: [ParameterDeclaration("AppDbContext", "context")],
-                                baseArgs: ["context"]
-                            )
-                        ]
-                    )
-                ]
-            )
-        ).ToFullString();
-    }
-
-    private string UnitOfWork(List<Entity> entities)
-    {
-        var properties = new List<PropertyDeclarationSyntax>();
-        foreach (var entity in entities)
-            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
-        if (_appSetting.IsThereIdentiy)
-            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
-
-        var fileds = new List<FieldDeclarationSyntax>()
-        {
-            FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context"),
-            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction")
-        };
-
-        var constructor = ConstructorDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword],
-            name: "UnitOfWork",
-            parameters: [
-                ParameterDeclaration("AppDbContext", "context"),
-                ..entities.Select(e => ParameterDeclaration($"I{e.Name}Repository", $"{e.Name}Repository".ToCamelCase(), false)),
-            ],
-            statements: [
-                StatementExpression("_context", "context"),
-                ..entities.Select(e => StatementExpression(e.Name.Pluralize(), $"{e.Name}Repository".ToCamelCase())),
-            ]
-        );
-        if (_appSetting.IsThereIdentiy)
-        {
-            constructor = constructor.AddParameterListParameters(ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository", false));
-            constructor = constructor.AddBodyStatements(StatementExpression("refreshTokens", "RefreshTokens"));
-        }
-
-        var methodsConcrete = new List<MethodDeclarationSyntax>()
-        {
-            #region Syncronous
-		    MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword],
-                name: "SaveChanges",
-                returnType: "int",
-                body: "return _context.SaveChanges();"
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword],
-                name: "BeginTransaction",
-                returnType: "void",
-                body: @"
-                    if (_transaction != null) throw new InvalidOperationException(""Transaction already started for begin transaction."");
-                    _transaction = _context.Database.BeginTransaction();
-                "
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword],
-                name: "CommitTransaction",
-                returnType: "void",
-                body: @"
-                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for commit transaction."");
-                    _transaction.Commit();
-                    _transaction.Dispose();
-                    _transaction = null;
-                "
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword],
-                name : "RollbackTransaction",
-                returnType : "void",
-                body: @"
-                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for rollback."");
-                    _transaction.Rollback();
-                    _transaction.Dispose();
-                    _transaction = null;
-                "
-            ), 
-	        #endregion
-		
-            #region Asyncronous
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-                name: "SaveChangesAsync",
-                returnType: "Task<int>",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                body: "return await _context.SaveChangesAsync(cancellationToken);"
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-                name: "BeginTransactionAsync",
-                returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                body: @"
-                    if (_transaction != null) throw new InvalidOperationException(""Transaction already started for begin transaction."");
-                    _transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-                "
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-                name: "CommitTransactionAsync",
-                returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                body: @"
-                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for commit."");
-                    await _transaction.CommitAsync(cancellationToken);
-                    await _transaction.DisposeAsync();
-                    _transaction = null;
-                "
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-                name: "RollbackTransactionAsync",
-                returnType : "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                body: @"
-                    if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for rollback."");
-                    await _transaction.RollbackAsync(cancellationToken);
-                    await _transaction.DisposeAsync();
-                    _transaction = null;    
-                "
-            ), 
-	        #endregion
-		
-            #region Dispose
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword],
-                name: "Dispose",
-                returnType : "void",
-                body: @"
-                    if (_transaction != null)
-                    {
-                        _transaction.Dispose();
-                        _transaction = null;
-                    }
-                    _context.Dispose();
-                "
-            ),
-            MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
-                name: "DisposeAsync",
-                returnType : "ValueTask",
-                body: @"
-                    if (_transaction != null)
-                    {
-                        await _transaction.DisposeAsync();
-                        _transaction = null;
-                    }
-                    await _context.DisposeAsync();
-                "
-            ) 
-	        #endregion
-        };
-
-        string code_concrete = CompilationUnit(
-            usings: [
-                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
-                $"{_appSetting.DataAccessLayerProjectName}.Contexts",
-                "Microsoft.EntityFrameworkCore.Storage"
-            ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.UoW",
-                members: [
-                    ClassDeclaration(
-                        modifiers: [SyntaxKind.PublicKeyword],
-                        name: "UnitOfWork",
-                        baseTypes: [SyntaxFactory.ParseTypeName("IUnitOfWork")],
-                        members: [
-                            ..fileds,
-                            ..properties,
-                            constructor,
-                            ..methodsConcrete
-                        ]
-                    )
-                ]
-            )
-        ).ToFullString();
-        return code_concrete;
-    }
-    private string IUnitOfWork(List<Entity> entities)
-    {
-        var properties = new List<PropertyDeclarationSyntax>();
-        foreach (var entity in entities)
-            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
-        if (_appSetting.IsThereIdentiy)
-            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
-
-        var abstractMethods = new List<MethodDeclarationSyntax>()
-        {
-            MethodDeclaration(name: "SaveChanges", returnType: "int", isThereBody: false),
-            MethodDeclaration(name : "BeginTransaction", returnType : "void", isThereBody: false),
-            MethodDeclaration(name : "CommitTransaction", returnType : "void", isThereBody: false),
-            MethodDeclaration(name : "RollbackTransaction", returnType : "void", isThereBody: false),
-
-            MethodDeclaration(
-                name: "SaveChangesAsync",
-                returnType: "Task<int>",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                isThereBody: false
-            ),
-            MethodDeclaration(
-                name: "BeginTransactionAsync",
-                returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                isThereBody: false
-            ),
-            MethodDeclaration(
-                name: "CommitTransactionAsync",
-                returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                isThereBody: false
-            ),
-            MethodDeclaration(
-                name: "RollbackTransactionAsync",
-                returnType : "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
-                isThereBody: false
-            )
-        };
-
-        return CompilationUnit(
-            usings: [$"{_appSetting.DataAccessLayerProjectName}.Abstract"],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.UoW",
-                members: [
-                    InterfaceDeclaration(
-                        modifiers: [SyntaxKind.PublicKeyword],
-                        name: "IUnitOfWork",
-                        baseTypes: [
-                            SyntaxFactory.ParseTypeName("IDisposable"),
-                            SyntaxFactory.ParseTypeName("IAsyncDisposable")
-                        ],
-                        members: [
-                            ..properties,
-                            ..abstractMethods
-                        ]
-                    )
-                ]
-            )
-        ).ToFullString();
-    }
-
-    private StatementSyntax RelationOneToOne(char eSc, char f_eSc, Relation relation)
-    {
-        return SyntaxFactory.ParseStatement(
-            @$"{eSc}.HasOne({eSc} => {eSc}.{relation.PrimaryEntityVirPropName})
-                .WithOne({f_eSc} => {f_eSc}.{relation.ForeignEntityVirPropName})
-                .HasForeignKey<{relation.ForeignField.Entity.Name}>({f_eSc} => {f_eSc}.{relation.ForeignField.Name})
-                .OnDelete({relation.GetOnDeleteType()});
-            ");
-    }
-    private StatementSyntax RelationOneToMany(char eSc, char f_eSc, Relation relation)
-    {
-        return SyntaxFactory.ParseStatement(
-            @$"{eSc}.HasOne({eSc} => {eSc}.{relation.PrimaryEntityVirPropName})
-            .WithOne({f_eSc} => {f_eSc}.{relation.ForeignEntityVirPropName})
-            .HasForeignKey<{relation.ForeignField.Entity.Name}>({f_eSc} => {f_eSc}.{relation.ForeignField.Name})
-            .OnDelete({relation.GetOnDeleteType()});"
-        );
+        return AddFile(folderPath, "ServiceRegistration", code.ToFullString());
     }
     #endregion
 }

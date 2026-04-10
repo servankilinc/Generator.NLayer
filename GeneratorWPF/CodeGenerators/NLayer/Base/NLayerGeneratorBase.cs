@@ -403,7 +403,7 @@ public class NLayerGeneratorBase
         return methodSytax.NormalizeWhitespace();
     }
 
-    protected ClassDeclarationSyntax ClassDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null)
+    protected ClassDeclarationSyntax ClassDeclaration(SyntaxKind[] modifiers, string name, AttributeSyntax[]? attributes = null, TypeSyntax[]? baseTypes = null, MemberDeclarationSyntax[]? members = null, string? body = null)
     {
         var classSyntax = SyntaxFactory
             .ClassDeclaration(name)
@@ -415,7 +415,8 @@ public class NLayerGeneratorBase
             classSyntax = classSyntax.AddBaseListTypes(baseTypes.Select(SyntaxFactory.SimpleBaseType).ToArray());
         if (members?.Length > 0)
             classSyntax = classSyntax.AddMembers(members);
-
+        if (body != null)
+            classSyntax = classSyntax.WithMembers(SyntaxFactory.List<MemberDeclarationSyntax>([SyntaxFactory.ParseMemberDeclaration(body)]!));
         return classSyntax.NormalizeWhitespace();
     }
 

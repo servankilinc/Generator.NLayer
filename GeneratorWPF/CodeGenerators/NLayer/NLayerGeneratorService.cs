@@ -141,7 +141,7 @@ public class NLayerGeneratorService
 
             // 4. Repository Services
             log(nLayerDataAccessService.GenerateRepositories());
- 
+
             // 5. UOW
             log(nLayerDataAccessService.GenerateUOW());
 
@@ -185,7 +185,7 @@ public class NLayerGeneratorService
             log(nLayerBusinessService.GeneraterService());
 
             // 6. Service Registrations
-            log(nLayerBusinessService.GenerateServiceRegistrations(solutionPath));
+            log(nLayerBusinessService.GenerateServiceRegistrations());
 
             return true;
         }

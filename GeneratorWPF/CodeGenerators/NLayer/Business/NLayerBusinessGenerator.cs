@@ -25,33 +25,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         _entityRepository = new();
     }
 
-    public string GenerateMappings()
-    {
-        var code = CompilationUnit(
-            usings: MappingProfilesHelper.GetUsings(_entityRepository, _dtoRepository, _appSetting),
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.BusinessLayerProjectName}.Mappings",
-                members: [
-                    ClassDeclaration(
-                        name: "MappingProfiles",
-                        modifiers: [SyntaxKind.PublicKeyword],
-                        baseTypes: [SyntaxFactory.ParseTypeName("Profile")],
-                        members: [
-                            ConstructorDeclaration(
-                                modifiers: [SyntaxKind.PublicKeyword],
-                                name: "MappingProfiles",
-                                block: MappingProfilesHelper.GetRules(_entityRepository, _dtoRepository, _dtoFieldRepository, _appSetting)
-                            )
-                        ]
-                    )
-                ]
-            )
-        ).ToFullString();
-
-        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Mappings");
-        return AddFile(folderPath, "MappingProfiles", code);
-    }
-
+    #region Service
     public string GeneraterService()
     {
         var results = new List<string>();
@@ -183,7 +157,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
 
 
-            string code_AuthService = CompilationUnit(
+            var code_AuthService = CompilationUnit(
                 usings: [
                     $"AutoMapper",
                     $"System.Security.Claims",
@@ -200,85 +174,362 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
                     $"{_appSetting.ModelLayerProjectName}.Entities",
                     $"{_appSetting.BusinessLayerProjectName}.Abstract",
-                    $"{_appSetting.BusinessLayerProjectName}.Utils.TokenService",
-                    $"{_appSetting.ModelLayerProjectName}.Dtos.{_appSetting.GetIdentityModelTypeNames().}.Commands",
+                    $"{_appSetting.BusinessLayerProjectName}.Utils.TokenService"
+                ],
+                nspace: NamespaceDeclaration(
+                    value: $"{_appSetting.BusinessLayerProjectName}.Concrete",
+                    members: [
+                        ClassDeclaration(
+                            name: "AuthService",
+                            modifiers: [SyntaxKind.PublicKeyword],
+                            baseTypes: [SyntaxFactory.ParseTypeName("IAuthService")],
+                            members: [
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IUnitOfWork", "_unitOfWork"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "ITokenService", "_tokenService"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "UserManager<User>", "_userManager"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "SignInManager<User>", "_signInManager"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IHttpContextManager", "_httpContextManager"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IValidationService", "_validationService"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IMapper", "_mapper"),
 
-                ]    
+                                ConstructorDeclaration(
+                                    modifiers: [SyntaxKind.PublicKeyword],
+                                    name: "AuthService",
+                                    parameters: [
+                                        ParameterDeclaration("IUnitOfWork", "unitOfWork", false),
+                                        ParameterDeclaration("ITokenService", "tokenService", false),
+                                        ParameterDeclaration("UserManager<User>", "userManager", false),
+                                        ParameterDeclaration("SignInManager<User>", "signInManager", false),
+                                        ParameterDeclaration("IHttpContextManager", "httpContextManager", false),
+                                        ParameterDeclaration("IValidationService", "validationService", false),
+                                        ParameterDeclaration("IMapper", "mapper", false)
+                                    ],
+                                    statements: [
+                                        StatementExpression("unitOfWork", "_unitOfWork"),
+                                        StatementExpression("tokenService", "_tokenService"),
+                                        StatementExpression("userManager", "_userManager"),
+                                        StatementExpression("signInManager", "_signInManager"),
+                                        StatementExpression("httpContextManager", "_httpContextManager"),
+                                        StatementExpression("validationService", "_validationService"),
+                                        StatementExpression("mapper", "_mapper")
+                                    ]
+                                ),
+
+                                MethodDeclaration(
+                                    modifiers: [SyntaxKind.PrivateKeyword],
+                                    name: "LoginAsync",
+                                    returnType: $"Task<Result<LoginResponse>>",
+                                    parameters: [
+                                        ParameterDeclaration("LoginRequest", "loginRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                    ],
+                                    body: @"
+                                        var validationResult = await _validationService.ValidateAsync(loginRequest, cancellationToken);
+                                        if (!validationResult.IsValid)
+                                            return Result<LoginResponse>.Validation(validationResult.Failures);
+
+                                        // 1) Find user by credentials
+                                        User? user = null;
+                                        if (loginRequest.Email != null)
+                                        {
+                                            user = await _userManager.FindByEmailAsync(loginRequest.Email);
+                                        }
+                                        else if (loginRequest.UserName != null)
+                                        {
+                                            user = await _userManager.FindByNameAsync(loginRequest.UserName);
+                                        }
+                                        if (user == null)
+                                            return Result<LoginResponse>.Failure(message: ""Credentials are incorrect."", metadata: GlobalExtensions.Meta(""Requester Email or Username"", loginRequest.Email ?? loginRequest.UserName));
+
+                                        // 2) Check password
+                                        SignInResult checkPassword = await _signInManager.CheckPasswordSignInAsync(user, loginRequest.Password, lockoutOnFailure: true);
+                                        if (!checkPassword.Succeeded)
+                                        {
+                                            if (checkPassword.IsLockedOut)
+                                                return Result<LoginResponse>.Failure(message: ""Your account is temporarily locked due to multiple failed login attempts."", metadata: GlobalExtensions.Meta(""Requester Email"", loginRequest.Email));
+                                            if (checkPassword.RequiresTwoFactor)
+                                                return Result<LoginResponse>.Failure(message: ""Two-factor authentication is required to login."", metadata: GlobalExtensions.Meta(""Requester Email"", loginRequest.Email));
+                                            if (checkPassword.IsNotAllowed)
+                                                return Result<LoginResponse>.Failure(message: ""The user is not allowed to sign in."", metadata: GlobalExtensions.Meta(""Requester Email"", loginRequest.Email));
+                                            return Result<LoginResponse>.Failure(message: ""Credentials are incorrect."", metadata: GlobalExtensions.Meta(""Requester Email or Username"", loginRequest.Email ?? loginRequest.UserName));
+                                        }
+
+                                        if (!await _signInManager.CanSignInAsync(user))
+                                        {
+                                            return Result<LoginResponse>.Failure(message: ""You are not allowed to login."", metadata: GlobalExtensions.Meta(""User"", user));
+                                        }
+
+                                        // 3) Get user roles and claims
+                                        IList<string> roles = await _userManager.GetRolesAsync(user);
+                                        IList<Claim> claims = await GetClaimsAsync(user, roles);
+
+                                        // 3) Generate Access Token and Refresh Token
+                                        Result<AccessToken> accessToken = _tokenService.GenerateAccessToken(claims);
+                                        if (!accessToken.IsSuccess)
+                                            return Result<LoginResponse>.Failure(description: ""Access token could not generated"", metadata: GlobalExtensions.Meta(""Access Token Result"", accessToken));
+
+                                        string tokenValue = _tokenService.GenerateRandomNumber();
+                                        Result<RefreshToken> refreshToken = _tokenService.GenerateRefreshToken(user, tokenValue, loginRequest.ClientType, loginRequest.DeviceId);
+                                        if (!refreshToken.IsSuccess)
+                                            return Result<LoginResponse>.Failure(description: ""Refresh token could not generated"", metadata: GlobalExtensions.Meta(""Refresh Token Result"", refreshToken));
+
+                                        // 4) Save Refresh Token and Revoke old ones if deviceId is provided
+                                        if (loginRequest.DeviceId != null && loginRequest.DeviceId.HasValue)
+                                        {
+                                            await _unitOfWork.RefreshTokens.RevokeDeviceRefreshTokensAsync(f => f.DeviceId == loginRequest.DeviceId.Value && f.IsRevoked == false);
+                                        }
+                                        await _unitOfWork.RefreshTokens.AddAndSaveAsync(refreshToken.Data, cancellationToken);
+
+                                        if (refreshToken.Data.ClientType != ClientType.Web)
+                                        {
+                                            return Result<LoginResponse>.Success(new LoginTrustedResponse
+                                            {
+                                                AccessToken = accessToken.Data,
+                                                RefreshToken = tokenValue,
+                                                DeviceId = refreshToken.Data.DeviceId,
+                                                //User = user,
+                                                Roles = roles
+                                            });
+                                        }
+                                        else
+                                        {
+                                            _httpContextManager.AddRefreshTokenToCookie(tokenValue, refreshToken.Data.ExpirationUtc);
+                                            return Result<LoginResponse>.Success(new LoginResponse
+                                            {
+                                                AccessToken = accessToken.Data,
+                                                DeviceId = refreshToken.Data.DeviceId,
+                                                //User = user,
+                                                Roles = roles
+                                            });
+                                        }
+                                    "
+                                ),
+                                MethodDeclaration(
+                                    modifiers: [SyntaxKind.PrivateKeyword],
+                                    name: "SignUpAsync",
+                                    returnType: $"Task<Result<SignUpResponse>>",
+                                    parameters: [
+                                        ParameterDeclaration("SignUpRequest", "signUpRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                    ],
+                                    body: @"
+                                        try
+                                        {
+                                            var validationResult = await _validationService.ValidateAsync(signUpRequest, cancellationToken);
+                                            if (!validationResult.IsValid)
+                                                return Result<SignUpResponse>.Validation(validationResult.Failures);
+
+                                            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+                                            // 1) Check if user already exists
+                                            var userExist = await _userManager.FindByEmailAsync(signUpRequest.Email);
+                                            if (userExist != null)
+                                                return Result<SignUpResponse>.Failure(message: ""The email address is already in use."", metadata: GlobalExtensions.Meta(""Request Email"", signUpRequest.Email));
+
+                                            userExist = await _userManager.FindByNameAsync(signUpRequest.Email);
+                                            if (userExist != null)
+                                                return Result<SignUpResponse>.Failure(message: ""The user name is already in use."", metadata: GlobalExtensions.Meta(""Request User Name"", signUpRequest.UserName));
+
+                                            // 2) Create new user
+                                            var user = _mapper.Map<User>(signUpRequest);
+                                            var result = await _userManager.CreateAsync(user, signUpRequest.Password);
+                                            if (!result.Succeeded)
+                                                return Result<SignUpResponse>.Failure(description: $""User cannot be created."", metadata: GlobalExtensions.Meta((""Requester Email"", signUpRequest.Email), (""Identity Service Errors"", result)));
+
+                                            // 3) Assign ""User"" role to the new user
+                                            var roleResult = await _userManager.AddToRoleAsync(user, ""User"");
+                                            if (!roleResult.Succeeded)
+                                                return Result<SignUpResponse>.Failure(description: $""Failed to assign role"", metadata: GlobalExtensions.Meta((""Requester Email"", signUpRequest.Email), (""Identity Service Errors"", roleResult)));
+
+                                            // 4) Get user roles and claims
+                                            IList<string> roles = await _userManager.GetRolesAsync(user);
+                                            IList<Claim> claims = await GetClaimsAsync(user, roles);
+
+                                            // 5) Generate Access Token and Refresh Token
+                                            Result<AccessToken> accessToken = _tokenService.GenerateAccessToken(claims);
+                                            if (!accessToken.IsSuccess)
+                                                return Result<SignUpResponse>.Failure(description: ""Access token could not generated"", metadata: GlobalExtensions.Meta(""Access Token Result"", accessToken));
+
+                                            string tokenValue = _tokenService.GenerateRandomNumber();
+                                            Result<RefreshToken> refreshToken = _tokenService.GenerateRefreshToken(user, tokenValue, signUpRequest.ClientType, signUpRequest.DeviceId);
+                                            if (!refreshToken.IsSuccess)
+                                                return Result<SignUpResponse>.Failure(description: ""Refresh token could not generated"", metadata: GlobalExtensions.Meta(""Refresh Token Result"", refreshToken));
+
+                                            // 6) Save Refresh Token and Revoke old ones if deviceId is provided
+                                            if (signUpRequest.DeviceId != null && signUpRequest.DeviceId.HasValue)
+                                            {
+                                                await _unitOfWork.RefreshTokens.RevokeDeviceRefreshTokensAsync(f => f.DeviceId == signUpRequest.DeviceId.Value && f.IsRevoked == false);
+                                            }
+                                            await _unitOfWork.RefreshTokens.AddAndSaveAsync(refreshToken.Data, cancellationToken);
+
+
+                                            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                                            if (signUpRequest.ClientType != ClientType.Web)
+                                            {
+                                                return Result<SignUpResponse>.Success(new SignUpTrustedResponse
+                                                {
+                                                    AccessToken = accessToken.Data,
+                                                    RefreshToken = tokenValue,
+                                                    DeviceId = refreshToken.Data.DeviceId,
+                                                    //User = user,
+                                                    Roles = roles,
+                                                });
+                                            }
+                                            else
+                                            {
+                                                _httpContextManager.AddRefreshTokenToCookie(tokenValue, refreshToken.Data.ExpirationUtc);
+                                                return Result<SignUpResponse>.Success(new SignUpResponse
+                                                {
+                                                    AccessToken = accessToken.Data,
+                                                    DeviceId = refreshToken.Data.DeviceId,
+                                                    //User = user,
+                                                    Roles = roles,
+                                                });
+                                            }
+                                        }
+                                        catch (Exception)
+                                        {
+                                            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                                            throw;
+                                        }
+                                    "
+                                ),
+                                MethodDeclaration(
+                                    modifiers: [SyntaxKind.PrivateKeyword],
+                                    name: "RefreshAsync",
+                                    returnType: $"Task<Result<RefreshAuthResponse>>",
+                                    parameters: [
+                                        ParameterDeclaration("RefreshRequest", "refreshAuthRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                    ],
+                                    body: @"
+                                        try
+                                        {
+                                            var validationResult = await _validationService.ValidateAsync(refreshAuthRequest, cancellationToken);
+                                            if (!validationResult.IsValid)
+                                                return Result<RefreshAuthResponse>.Validation(validationResult.Failures);
+
+                                            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+                                            // 1) Set refresh token from cookie if not provided
+                                            if (string.IsNullOrWhiteSpace(refreshAuthRequest.RefreshToken))
+                                            {
+                                                var cookieValue = _httpContextManager.GetRefreshTokenFromCookie();
+                                                if (!cookieValue.IsSuccess)
+                                                    return Result<RefreshAuthResponse>.Failure(description: ""Refresh auth request cookie not found in cookie"", metadata: GlobalExtensions.Meta(""Cookie Result"", cookieValue.Error.Description));
+                                                refreshAuthRequest.RefreshToken = cookieValue.Data;
+                                            }
+                                            string hashedToken = _tokenService.HashToken(refreshAuthRequest.RefreshToken);
+
+                                            // 2) Find refresh token record
+                                            RefreshToken? refreshToken = await _unitOfWork.RefreshTokens.GetAsync(where: f =>
+                                                f.UserId == refreshAuthRequest.UserId &&
+                                                f.DeviceId == refreshAuthRequest.DeviceId &&
+                                                f.Token == hashedToken &&
+                                                f.TTL > 0 &&
+                                                f.IsRevoked == false &&
+                                                f.ExpirationUtc > DateTime.UtcNow,
+                                                cancellationToken: cancellationToken
+                                            );
+                                            if (refreshToken == null)
+                                                return Result<RefreshAuthResponse>.Failure(description: ""There is no refresh token that can be used."", metadata: GlobalExtensions.Meta(""Request Model"", refreshAuthRequest));
+
+                                            // 3) Find user
+                                            var user = await _unitOfWork.Users.GetAsync(where: f => f.Id == refreshAuthRequest.UserId, cancellationToken: cancellationToken);
+                                            if (user == null)
+                                                return Result<RefreshAuthResponse>.Failure(description: $""User cannot found for refresh auth, userId: {refreshAuthRequest.UserId}"", metadata: GlobalExtensions.Meta(""Request Model"", refreshAuthRequest));
+
+                                            // 4) Update refresh token 
+                                            string tokenValue = _tokenService.GenerateRandomNumber();
+                                            refreshToken.Token = _tokenService.HashToken(tokenValue);
+                                            refreshToken.TTL -= 1;
+                                            await _unitOfWork.RefreshTokens.UpdateAndSaveAsync(refreshToken, cancellationToken);
+
+                                            // 5) revoke old tokens for the device
+                                            await _unitOfWork.RefreshTokens.RevokeDeviceRefreshTokensAsync(f => f.DeviceId == refreshAuthRequest.DeviceId && f.IsRevoked == false && f.Id != refreshToken.Id, cancellationToken);
+
+                                            // 6) Get user roles and claims
+                                            IList<string> roles = await _userManager.GetRolesAsync(user);
+                                            IList<Claim> claims = await GetClaimsAsync(user, roles);
+
+                                            // 7) Generate new access token
+                                            Result<AccessToken> accessToken = _tokenService.GenerateAccessToken(claims);
+                                            if (!accessToken.IsSuccess)
+                                                return Result<RefreshAuthResponse>.Failure(description: ""Access token could not generated"", metadata: GlobalExtensions.Meta(""Access Token Result"", accessToken));
+
+                                            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                                            if (refreshToken.ClientType != ClientType.Web)
+                                            {
+                                                return Result<RefreshAuthResponse>.Success(new RefreshAuthTrustedResponse
+                                                {
+                                                    AccessToken = accessToken.Data,
+                                                    RefreshToken = tokenValue,
+                                                    Roles = roles
+                                                });
+                                            }
+                                            else
+                                            {
+                                                _httpContextManager.AddRefreshTokenToCookie(tokenValue, refreshToken.ExpirationUtc);
+                                                return Result<RefreshAuthResponse>.Success(new RefreshAuthResponse
+                                                {
+                                                    AccessToken = accessToken.Data,
+                                                    Roles = roles
+                                                });
+                                            }
+                                        }
+                                        catch (Exception)
+                                        {
+                                            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                                            throw;
+                                        }
+                                    "
+                                ),
+                                MethodDeclaration(
+                                    modifiers: [SyntaxKind.PrivateKeyword, SyntaxKind.AsyncKeyword],
+                                    name: "GetClaimsAsync",
+                                    returnType: $"Task<IList<Claim>>",
+                                    parameters: [
+                                        ParameterDeclaration("User", "user", true),
+                                        ParameterDeclaration("IList<string>", "roles", false)
+                                    ],
+                                    body: @"
+                                        List<Claim> claimList = new List<Claim>()
+                                        {
+                                            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                                            new Claim(ClaimTypes.Name, $""{user.Name} {user.LastName}"")
+                                        };
+
+                                        if (!string.IsNullOrEmpty(user.Email))
+                                            claimList.Add(new Claim(ClaimTypes.Email, user.Email));
+
+                                        IList<Claim>? persistentClaims = await _userManager.GetClaimsAsync(user);
+                                        claimList.AddRange(persistentClaims);
+
+                                        IEnumerable<Claim>? roleClaims = roles.Select(role => new Claim(ClaimTypes.Role, role));
+                                        claimList.AddRange(roleClaims);
+
+                                        // password, role vs. değişdiğinde mevcut tokenları geçersiz kılmak için security stamp eklenebilir
+                                        // var securityStamp = await _userManager.GetSecurityStampAsync(user);
+                                        // claimList.Add(new Claim(""app_security_stamp_claim"", securityStamp));
+
+                                        return claimList;
+                                    "
+                                )
+                            ]
+                        )
+                    ]
+                )
             );
 
             results.Add(AddFile(folderPathAbstract, "IAuthService", code_IAuthService.ToFullString()));
-            results.Add(AddFile(folderPathConcrete, "AuthService", code_AuthService));
+            results.Add(AddFile(folderPathConcrete, "AuthService", code_AuthService.ToFullString()));
         }
 
         return string.Join("\n", results);
     }
 
-    public string GenerateServiceRegistrations()
-    {
-        var entities = _entityRepository.GetAll(f => f.Control == false);
-
-        #region Usings
-        List<string> usings = new()
-        {
-            "Microsoft.Extensions.DependencyInjection",
-            "Microsoft.Extensions.Configuration",
-            $"{_appSetting.BusinessLayerProjectName}.Abstract",
-            $"{_appSetting.BusinessLayerProjectName}.Concrete"
-        };
-        if (_appSetting.IsThereIdentiy)
-        {
-            usings.Add($"{_appSetting.BusinessLayerProjectName}.Utils.TokenService");
-        }
-        #endregion
-
-        #region Body
-        StringBuilder sbBody = new();
-        if (_appSetting.IsThereIdentiy)
-        {
-            sbBody.AppendLine("services.AddSingleton<ITokenService, TokenService>();");
-            sbBody.AppendLine("services.AddScoped<IAuthService, AuthService>();");
-            sbBody.AppendLine();
-        }
-        sbBody.AppendLine("#region ENTITY SERVICES");
-        foreach (var entity in entities)
-        {
-            sbBody.AppendLine($"services.AddScoped<I{entity.Name}Service, {entity.Name}Service>();");
-        }
-        sbBody.AppendLine("#endregion");
-        sbBody.AppendLine();
-        sbBody.AppendLine("return services;"); 
-        #endregion
-
-        var code = CompilationUnit(
-            usings: [..usings],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.BusinessLayerProjectName}",
-                members: [
-                    ClassDeclaration(
-                        name: "ServiceRegistration",
-                        modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
-                        members: [
-                            MethodDeclaration(
-                                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
-                                name: "AddBusinessServices",
-                                returnType: "IServiceCollection",
-                                parameters: [
-                                    ParameterDeclaration("IServiceCollection", "services", true, [SyntaxKind.ThisKeyword]),
-                                    ParameterDeclaration("IConfiguration", "configuration", true)
-                                ],
-                                body: sbBody.ToString()
-                            )
-                        ]
-                    )
-                ]
-            )
-        );
-         
-        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName); 
-        return AddFile(folderPath, "ServiceRegistration", code.ToFullString());
-    }
-
-    #region Service Methods
     private List<MethodDeclarationSyntax> GenerateAbstractMethods(Entity entity, List<Dto> dtos)
     {
         var methods = new List<MethodDeclarationSyntax>();
@@ -950,6 +1201,103 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #endregion
 
         return methods;
-    } 
+    }
+    #endregion
+
+
+    #region Mapping Profile
+    public string GenerateMappings()
+    {
+        var code = CompilationUnit(
+            usings: MappingProfilesHelper.GetUsings(_entityRepository, _dtoRepository, _appSetting),
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.BusinessLayerProjectName}.Mappings",
+                members: [
+                    ClassDeclaration(
+                        name: "MappingProfiles",
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        baseTypes: [SyntaxFactory.ParseTypeName("Profile")],
+                        members: [
+                            ConstructorDeclaration(
+                                modifiers: [SyntaxKind.PublicKeyword],
+                                name: "MappingProfiles",
+                                block: MappingProfilesHelper.GetRules(_entityRepository, _dtoRepository, _dtoFieldRepository, _appSetting)
+                            )
+                        ]
+                    )
+                ]
+            )
+        ).ToFullString();
+
+        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Mappings");
+        return AddFile(folderPath, "MappingProfiles", code);
+    }
+    #endregion
+
+    #region Service Registration
+    public string GenerateServiceRegistrations()
+    {
+        var entities = _entityRepository.GetAll(f => f.Control == false);
+
+        #region Usings
+        List<string> usings = new()
+        {
+            "Microsoft.Extensions.DependencyInjection",
+            "Microsoft.Extensions.Configuration",
+            $"{_appSetting.BusinessLayerProjectName}.Abstract",
+            $"{_appSetting.BusinessLayerProjectName}.Concrete"
+        };
+        if (_appSetting.IsThereIdentiy)
+        {
+            usings.Add($"{_appSetting.BusinessLayerProjectName}.Utils.TokenService");
+        }
+        #endregion
+
+        #region Body
+        StringBuilder sbBody = new();
+        if (_appSetting.IsThereIdentiy)
+        {
+            sbBody.AppendLine("services.AddSingleton<ITokenService, TokenService>();");
+            sbBody.AppendLine("services.AddScoped<IAuthService, AuthService>();");
+            sbBody.AppendLine();
+        }
+        sbBody.AppendLine("#region ENTITY SERVICES");
+        foreach (var entity in entities)
+        {
+            sbBody.AppendLine($"services.AddScoped<I{entity.Name}Service, {entity.Name}Service>();");
+        }
+        sbBody.AppendLine("#endregion");
+        sbBody.AppendLine();
+        sbBody.AppendLine("return services;");
+        #endregion
+
+        var code = CompilationUnit(
+            usings: [.. usings],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.BusinessLayerProjectName}",
+                members: [
+                    ClassDeclaration(
+                        name: "ServiceRegistration",
+                        modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
+                        members: [
+                            MethodDeclaration(
+                                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
+                                name: "AddBusinessServices",
+                                returnType: "IServiceCollection",
+                                parameters: [
+                                    ParameterDeclaration("IServiceCollection", "services", true, [SyntaxKind.ThisKeyword]),
+                                    ParameterDeclaration("IConfiguration", "configuration", true)
+                                ],
+                                body: sbBody.ToString()
+                            )
+                        ]
+                    )
+                ]
+            )
+        );
+
+        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName);
+        return AddFile(folderPath, "ServiceRegistration", code.ToFullString());
+    }
     #endregion
 }

@@ -27,87 +27,58 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         _dtoFieldRepository = new();
     }
 
-    #region Auth Models
+    #region Auth-Models
     public string GenerateAuthModels()
     {
         var results = new List<string>();
+        var uniqueFields = _fieldRepository.GetAll(f => f.EntityId == _appSetting.UserEntityId && f.IsUnique);
 
-        // 1. Login Models
-        string code_LoginRequest = GeneraterLoginRequest();
-        string code_LoginResponse = GeneraterLoginResponse();
-
-        string folderPathLogin = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "Login");
-        results.Add(AddFile(folderPathLogin, "LoginRequest.cs", code_LoginRequest));
-        results.Add(AddFile(folderPathLogin, "LoginResponse.cs", code_LoginResponse));
-
-        // 2. Refresh Auth Models
-        string code_RefreshAuthRequest = GeneraterRefreshAuthRequest();
-        string code_RefreshAuthResponse = GeneraterRefreshAuthResponse();
-
-        string folderPathRefreshAuth = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "RefreshAuth");
-        results.Add(AddFile(folderPathRefreshAuth, "RefreshAuthRequest.cs", code_RefreshAuthRequest));
-        results.Add(AddFile(folderPathRefreshAuth, "RefreshAuthResponse.cs", code_RefreshAuthResponse));
-
-        // 3. Signup Models
-        string code_SignUpRequest = GeneraterSignUpRequest();
-        string code_SignUpResponse = GeneraterSignUpResponse();
-
-        string folderPathSignup = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "SignUp");
-        results.Add(AddFile(folderPathSignup, "SignUpRequest.cs", code_SignUpRequest));
-        results.Add(AddFile(folderPathSignup, "SignUpResponse.cs", code_SignUpResponse));
-
-        return string.Join("\n", results);
-    }
-
-    // Login
-    public string GeneraterLoginResponse()
-    {
-        var propertyList = new List<PropertyDeclarationSyntax>()
-        {
-            PropertyDeclaration("IList<string>", "Roles", false),
-            PropertyDeclaration("AccessToken", "AccessToken", true),
-            PropertyDeclaration("Guid", "DeviceId", true)
-        };
-
-        var usings = new List<string>()
-        {
-            $"{_appSetting.CoreLayerProjectName}.Utils.Auth"
-        };
-
-        if (_appSetting.UserEntityId != null)
-        {
-            var userEntity = _entityRepository.Get(f => f.Id == _appSetting.UserEntityId, include: i => i.Include(x => x.Dtos).ThenInclude(ti => ti.DtoFields));
-            if (userEntity != null)
-            {
-                if (userEntity.Dtos == null || !userEntity.Dtos.Any(f => f.CrudTypeId == (int)CrudTypeEnums.Read))
-                {
-                    propertyList.Add(PropertyDeclaration(userEntity.Name, "User", true));
-                }
-                else
-                {
-                    var userDto =
-                        userEntity.Dtos.FirstOrDefault(f => f.Id == userEntity.BasicResponseDtoId) ??
-                        userEntity.Dtos.FirstOrDefault(f => f.Id == userEntity.DetailResponseDtoId) ??
-                        userEntity.Dtos.FirstOrDefault(f => f.CrudTypeId == (int)CrudTypeEnums.Read);
-
-                    if (userDto != default)
-                    {
-                        usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{userEntity.Name}.Commands");
-                        propertyList.Add(PropertyDeclaration(userDto.Name, "User", true));
-                    }
-                }
-            }
-        }
-
-        return CompilationUnit(
-            usings: [.. usings],
+        #region 1. Login Models
+        var loginRequest = CompilationUnit(
+            usings: [
+                "FluentValidation",
+                $"{_appSetting.CoreLayerProjectName}.Utils.CriticalData"
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: "LoginRequest",
+                        members: [
+                            PropertyDeclaration("string", "Email", false),
+                            PropertyDeclaration("string", "UserName", false),
+                            PropertyDeclaration("string", "Password", true, [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
+                            PropertyDeclaration("Guid", "DeviceId", false),
+                            PropertyDeclaration("string", "ClientType", true)
+                        ]
+                    ),
+                    ValidatorClassDeclaration(
+                        modelName: "LoginRequest",
+                        ruleList: [
+                            "RuleFor(b => b).Must(b => !string.IsNullOrWhiteSpace(b.Email) || !string.IsNullOrWhiteSpace(b.UserName)).WithMessage(\"Either Email or UserName must be provided.\");",
+                            "RuleFor(b => b.UserName).MinimumLength(6).When(b => !string.IsNullOrWhiteSpace(b.UserName));",
+                            "RuleFor(b => b.Email).EmailAddress().When(b => !string.IsNullOrWhiteSpace(b.Email));",
+                            "RuleFor(b => b.Password).NotNull().NotEmpty().MinimumLength(6);",
+                            "RuleFor(b => b.ClientType).NotNull().NotEmpty();"
+                        ]
+                    )
+                ]
+            )
+        );
+        var loginResponse = CompilationUnit(
+            usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
                 members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "LoginResponse",
-                        members: [..propertyList]
+                        members: [
+                            PropertyDeclaration("IList<string>", "Roles", false),
+                            PropertyDeclaration("AccessToken", "AccessToken", true),
+                            PropertyDeclaration("Guid", "DeviceId", true)
+                        ]
                     ),
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
@@ -117,45 +88,40 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                     )
                 ]
             )
-        ).ToFullString();
-    }
-    public string GeneraterLoginRequest()
-    {
-        return CompilationUnit(
-            usings: [
-                $"{_appSetting.CoreLayerProjectName}.Utils.CriticalData",
-                "FluentValidation"
-             ],
-             nspace: NamespaceDeclaration(
-                 value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
-                 members: [
-                     ClassDeclaration(
+        );
+
+        string folderPathLogin = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "Login");
+        results.Add(AddFile(folderPathLogin, "LoginRequest.cs", loginRequest.ToFullString()));
+        results.Add(AddFile(folderPathLogin, "LoginResponse.cs", loginResponse.ToFullString()));
+        #endregion
+
+        #region 2. Refresh Auth Models
+        var refreshAuthRequest = CompilationUnit(
+            usings: ["FluentValidation"],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
+                members: [
+                    ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
-                        name: "LoginRequest",
+                        name: "RefreshAuthRequest",
                         members: [
-                            PropertyDeclaration("string", "Email", true),
-                            PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
-                            PropertyDeclaration("Guid", "DeviceId", false),
-                            PropertyDeclaration("string", "ClientType", true)
+                            PropertyDeclaration("string", "RefreshToken", false),
+                            PropertyDeclaration("Guid", "DeviceId", true),
+                            PropertyDeclaration(uniqueFields.FirstOrDefault()?.GetMapedTypeName() ?? "Guid", "UserId", true)
                         ]
                     ),
                     ValidatorClassDeclaration(
-                        modelName: "LoginRequest",
+                        modelName: "RefreshAuthRequest",
                         ruleList: [
-                            "RuleFor(b => b.Email).NotNull().EmailAddress().NotEmpty().EmailAddress();",
-                            "RuleFor(b => b.Password).NotNull().MinimumLength(6).NotEmpty();",
-                            "RuleFor(b => b.ClientType).NotNull().NotEmpty();"
+                            "RuleFor(b => b.UserId).NotNull().NotEmpty();",
+                            "RuleFor(b => b.DeviceId).NotNull().NotEqual(Guid.Empty).NotEmpty();"
                         ]
                     )
-                 ]
-             )
-         ).ToFullString();
-    }
+                ]
+            )
+        );
 
-    // Refresh Auth
-    public string GeneraterRefreshAuthResponse()
-    {
-        return CompilationUnit(
+        var refreshAuthResponse = CompilationUnit(
             usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
@@ -176,107 +142,59 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                     )
                 ]
             )
-        ).ToFullString();
-    }
-    public string GeneraterRefreshAuthRequest()
-    {
-        var ruleListOfValidation = new List<string>()
-        {
-            "RuleFor(b => b.DeviceId).NotNull().NotEqual(Guid.Empty).NotEmpty();"
-        };
+        );
 
-        var propertyList = new List<MemberDeclarationSyntax>()
-        {
-            PropertyDeclaration("string", "RefreshToken", false),
-            PropertyDeclaration("Guid", "DeviceId", true)
-        };
+        string folderPathRefreshAuth = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "RefreshAuth");
+        results.Add(AddFile(folderPathRefreshAuth, "RefreshAuthRequest.cs", refreshAuthRequest.ToFullString()));
+        results.Add(AddFile(folderPathRefreshAuth, "RefreshAuthResponse.cs", refreshAuthResponse.ToFullString()));
+        #endregion
 
-        if (_appSetting.UserEntityId != null)
-        {
-            var uniqueFields = _fieldRepository.GetAll(f => f.EntityId == _appSetting.UserEntityId && f.IsUnique);
-            if (uniqueFields != null)
-            {
-                if (uniqueFields.Count == 1)
-                {
-                    ruleListOfValidation.Add(@"RuleFor(b => b.UserId).NotNull().NotEmpty();");
-                    propertyList.Add(PropertyDeclaration(uniqueFields.First().GetMapedTypeName(), "UserId", true));
-                }
-                else
-                {
-                    foreach (var uf in uniqueFields)
-                    {
-                        ruleListOfValidation.Add($"RuleFor(b => b.{uf.Name}).NotNull().NotEmpty();");
-                        propertyList.Add(PropertyDeclaration(uf.GetMapedTypeName(), uf.Name, true));
-                    }
-                }
-            }
-        }
-
-        return CompilationUnit(
-            usings: ["FluentValidation"],
+        #region 3. Signup Models
+        var code_SignUpRequest = CompilationUnit(
+            usings: [
+                "FluentValidation",
+                $"{_appSetting.CoreLayerProjectName}.Utils.CriticalData"
+            ],
             nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
+                value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
                 members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
-                        name: "RefreshAuthRequest",
-                        members: propertyList.ToArray()
+                        name: "SignUpRequest",
+                        members: [
+                            PropertyDeclaration("string", "Email", true),
+                            PropertyDeclaration("string", "UserName", true),
+                            PropertyDeclaration("string", "Password", true, [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
+                            PropertyDeclaration("Guid", "DeviceId", false),
+                            PropertyDeclaration("string", "ClientType", true)
+                        ]
                     ),
-                    ValidatorClassDeclaration(modelName: "RefreshAuthRequest", ruleList: ruleListOfValidation.ToArray())
+                    ValidatorClassDeclaration(
+                        modelName: "SignUpRequest",
+                        ruleList:  [
+                            "RuleFor(b => b.Email).NotNull().NotEmpty().EmailAddress();",
+                            "RuleFor(b => b.UserName).NotNull().NotEmpty().MinimumLength(6);",
+                            "RuleFor(b => b.Password).NotNull().NotEmpty().MinimumLength(6);",
+                            "RuleFor(b => b.ClientType).NotNull().NotEmpty();"
+                        ]
+                    )
                 ]
             )
-        ).ToFullString();
-    }
+        );
 
-    // Signup
-    public string GeneraterSignUpResponse()
-    {
-        var properties = new List<PropertyDeclarationSyntax>()
-        {
-            PropertyDeclaration("IList<string>", "Roles", false),
-            PropertyDeclaration("AccessToken", "AccessToken", true),
-            PropertyDeclaration("Guid", "DeviceId", true)
-        };
-
-        var usings = new List<string>()
-        {
-            $"{_appSetting.CoreLayerProjectName}.Utils.Auth"
-        };
-
-        if (_appSetting.UserEntityId != null)
-        {
-            var userEntity = _entityRepository.Get(f => f.Id == _appSetting.UserEntityId, include: i => i.Include(x => x.Dtos).ThenInclude(ti => ti.DtoFields));
-            if (userEntity != null)
-            {
-                if (userEntity.Dtos == null || !userEntity.Dtos.Any(f => f.CrudTypeId == (int)CrudTypeEnums.Read))
-                {
-                    properties.Add(PropertyDeclaration(userEntity.Name, "User", true));
-                }
-                else
-                {
-                    var userDto =
-                        userEntity.Dtos.FirstOrDefault(f => f.Id == userEntity.BasicResponseDtoId) ??
-                        userEntity.Dtos.FirstOrDefault(f => f.Id == userEntity.DetailResponseDtoId) ??
-                        userEntity.Dtos.FirstOrDefault(f => f.CrudTypeId == (int)CrudTypeEnums.Read);
-
-                    if (userDto != default)
-                    {
-                        usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{userEntity.Name}.Commands");
-                        properties.Add(PropertyDeclaration(userDto.Name, "User", true));
-                    }
-                }
-            }
-        }
-
-        return CompilationUnit(
-            usings: [.. usings],
+        var code_SignUpResponse = CompilationUnit(
+            usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
                 members: [
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SignUpResponse",
-                        members: [..properties]
+                        members: [
+                            PropertyDeclaration("IList<string>", "Roles", false),
+                            PropertyDeclaration("AccessToken", "AccessToken", true),
+                            PropertyDeclaration("Guid", "DeviceId", true)
+                        ]
                     ),
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
@@ -286,67 +204,16 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                     )
                 ]
             )
-        ).ToFullString();
-    }
-    public string GeneraterSignUpRequest()
-    {
-        var properties = new List<PropertyDeclarationSyntax>()
-        {
-            PropertyDeclaration("Guid", "DeviceId", false),
-            PropertyDeclaration("string", "ClientType", true)
-        };
-        var ruleListOfValidation = new List<string>
-        {
-            "RuleFor(b => b.ClientType).NotNull().NotEmpty();"
-        };
+        );
 
-        var userFields = _fieldRepository.GetAll(f => f.EntityId == _appSetting.UserEntityId, include: i => i.Include(x => x.FieldType)) ?? new();
-        if (!userFields.Any(f => f.Name == "Email"))
-        {
-            properties.Add(PropertyDeclaration("string", "Email", true));
-            ruleListOfValidation.Add(@"RuleFor(b => b.Email).NotNull().EmailAddress().NotEmpty().EmailAddress();");
-        }
-        if (!userFields.Any(f => f.Name == "UserName"))
-        {
-            properties.Add(PropertyDeclaration("string", "UserName", true));
-            ruleListOfValidation.Add(@"RuleFor(b => b.UserName).NotNull().NotEmpty().MinimumLength(6);");
-        }
-        if (!userFields.Any(f => f.Name == "Password"))
-        {
-            properties.Add(PropertyDeclaration("string", "Password", true));
-            ruleListOfValidation.Add(@"RuleFor(b => b.Password).NotNull().MinimumLength(6).NotEmpty();");
-        }
+        string folderPathSignup = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "SignUp");
+        results.Add(AddFile(folderPathSignup, "SignUpRequest.cs", code_SignUpRequest.ToFullString()));
+        results.Add(AddFile(folderPathSignup, "SignUpResponse.cs", code_SignUpResponse.ToFullString()));
+        #endregion
 
-        foreach (var uf in userFields.Where(f => !f.IsUnique && f.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Base))
-        {
-            var relation = _relationRepository.IsExist(filter: f => f.ForeignFieldId == uf.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany);
-            if (relation)
-                continue;
-
-            if (uf.IsRequired) ruleListOfValidation.Add($"RuleFor(b => b.{uf.Name}).NotNull().NotEmpty();");
-            properties.Add(PropertyDeclaration(uf.GetMapedTypeName(), uf.Name, true));
-        }
-
-        return CompilationUnit(
-            usings: [
-                $"{_appSetting.CoreLayerProjectName}.Utils.CriticalData",
-                "FluentValidation",
-            ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
-                members: [
-                    ClassDeclaration(
-                        modifiers: [SyntaxKind.PublicKeyword],
-                        name: "SignUpRequest",
-                        members: [.. properties]
-                    ),
-                    ValidatorClassDeclaration("SignUpRequest", ruleListOfValidation.ToArray())
-                ]
-            )
-        ).ToFullString();
+        return string.Join("\n", results);
     }
     #endregion
-
 
     #region Entities
     public string GenerateEntities()
@@ -363,6 +230,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             results.Add(AddFile(folderPath, $"{entity.Name}.cs", code));
         }
 
+        #region RefreshToken
         if (_appSetting.IsThereIdentiy)
         {
             var identityTypeConfigs = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
@@ -396,6 +264,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Entities");
             results.Add(AddFile(folderPath, "RefreshToken.cs", code_refreshToken));
         }
+        #endregion
 
         return string.Join("\n", results);
     }
@@ -508,7 +377,6 @@ public class NLayerModelGenerator : NLayerGeneratorBase
     }
     #endregion
 
-
     #region Dtos
     public string GenerateDtos()
     {
@@ -519,10 +387,10 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         foreach (var dto in dtos)
         {
             string code = HandleGeneraterDto(dto);
-           
+
             string commandOrQuery = dto.CrudTypeId == (int)CrudTypeEnums.Read ? "Queries" : "Commands";
             string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Dtos", dto.RelatedEntity.Name, commandOrQuery);
-            
+
             results.Add(AddFile(folderPath, $"{dto.Name}.cs", code));
         }
         return string.Join("\n", results);
@@ -534,12 +402,13 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             filter: f => f.DtoId == dto.Id,
             include: i => i
                 .Include(x => x.SourceField).ThenInclude(x => x.FieldType)
-                .Include(x => x.SourceField).ThenInclude(x => x.Entity)
+                .Include(x => x.SourceField).ThenInclude(x => x.Entity).ThenInclude(x => x.Dtos)
                 .Include(x => x.Validations).ThenInclude(x => x.ValidatorType)
                 .Include(x => x.Validations).ThenInclude(x => x.ValidationParams)
             );
+        bool isExistValidation = dtoFieldList.Any(f => f.Validations != null);
 
-        // 1) Property List
+        #region 1) Property List
         List<PropertyDeclarationSyntax> properties = new();
 
         bool isReportDto = dto.RelatedEntity.ReportDtoId == dto.Id;
@@ -565,6 +434,8 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                 fieldTypeName = $"{fieldTypeName}?";
             if (dtoField.IsList)
                 fieldTypeName = $"List<{fieldTypeName}>";
+            if (!dtoField.IsRequired)
+                fieldTypeName = $"{fieldTypeName}?";
 
             properties.Add(PropertyDeclaration(fieldTypeName, dtoField.Name, dtoField.IsRequired));
         }
@@ -584,15 +455,16 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                 properties.Add(PropertyDeclaration("DateTime", "DeletedDateUtc", false));
             }
         }
+        #endregion
 
-        // *** Check kind of this Dto is Create and Related Entity of dto is User Entity then add password property
-        if (dto.CrudTypeId == (int)CrudTypeEnums.Create && dto.RelatedEntityId == _appSetting.UserEntityId && !dtoFieldList.Any(f => f.Name.ToLower() != "password"))
-            properties.Add(PropertyDeclaration("string", "Password", true));
-
-        // 2) Usings
+        #region 2) Usings
         List<string> usings = new(){
             $"{_appSetting.CoreLayerProjectName}.Model"
         };
+        if (isExistValidation)
+            usings.Add("FluentValidation");
+        if (dtoFieldList.Any(f => f.SourceField.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Entity))
+            usings.Add($"{_appSetting.ModelLayerProjectName}.Entities");
 
         if (dtoFieldList.Any(f => f.SourceField.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Dto))
         {
@@ -603,17 +475,13 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                     continue;
 
                 addedSourceEntites.Add(dtoField.SourceField.EntityId);
-                usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Commands");
-                usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Queries");
+                if (dtoField.SourceField.Entity.Dtos?.Any(f => f.CrudTypeId != (int)CrudTypeEnums.Read) == true)
+                    usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Commands");
+                if (dtoField.SourceField.Entity.Dtos?.Any(f => f.CrudTypeId == (int)CrudTypeEnums.Read) == true)
+                    usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Queries");
             }
         }
-
-        bool isExistValidation = dtoFieldList.Any(f => f.Validations != null);
-        if (isExistValidation)
-            usings.Add("FluentValidation");
-
-        if (dtoFieldList.Any(f => f.SourceField.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Entity))
-            usings.Add($"{_appSetting.ModelLayerProjectName}.Entities");
+        #endregion
 
         List<ClassDeclarationSyntax> classes = new()
         {
@@ -628,7 +496,6 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         if (isExistValidation)
         {
             var rules = new List<string>();
-
             foreach (var dtoField in dtoFieldList)
             {
                 if (dtoField.Validations == null || !dtoField.Validations.Any())
@@ -641,16 +508,8 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                     rules.Add(rule);
                 }
             }
-
-            if (dto.CrudTypeId == (int)CrudTypeEnums.Create && dto.RelatedEntityId == _appSetting.UserEntityId)
-            {
-                rules.Add(@"RuleFor(v => v.Password).NotNull().WithMessage(""Password cannot be null."");");
-                rules.Add(@"RuleFor(v => v.Password).MinimumLength(6).WithMessage(""Password must be at least 6 characters long."");");
-            }
-
             classes.Add(ValidatorClassDeclaration(dto.Name, [.. rules]));
         }
-
 
         return CompilationUnit(
             usings: [.. usings],

@@ -104,7 +104,7 @@ public class RoslynWebUIControllerGenerator
                )
             );
         }
-        SyntaxFactory.ParseStatement("_mapper = mapper;"),
+
         // 5) Constructor
         var constructor = SyntaxFactory.ConstructorDeclaration(controllerName)
             .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
