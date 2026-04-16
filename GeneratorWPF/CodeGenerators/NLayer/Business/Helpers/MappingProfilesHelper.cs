@@ -19,7 +19,7 @@ public static class MappingProfilesHelper
         var usings = new List<string> { "AutoMapper" };
         if (isEntityExist)
             usings.Add($"{appSettings.ModelLayerProjectName}.Entities");
-        if (appSettings.IsThereIdentiy)
+        if (appSettings.IsThereIdentity)
             usings.Add($"{appSettings.ModelLayerProjectName}.Auth.SignUp");
         foreach (var group in dtos.GroupBy(x => x.RelatedEntity.Name))
         {
@@ -47,7 +47,7 @@ public static class MappingProfilesHelper
             string entityToEntityRule = $"CreateMap<{entity.Name}, {entity.Name}>().ForAllMembers(opt => opt.Condition((src, dest, srcMember, destMember) => !Equals(srcMember, destMember)));";
             mappings.Add(SyntaxFactory.ParseStatement(entityToEntityRule));
 
-            if (appSettings.IsThereIdentiy && appSettings.UserEntityId == entity.Id)
+            if (appSettings.IsThereIdentity && appSettings.UserEntityId == entity.Id)
             {
                 mappings.Add(MapperCommandSignupDto(appSettings, entity));
             }

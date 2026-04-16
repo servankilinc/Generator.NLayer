@@ -98,7 +98,7 @@ public class NLayerGeneratorService
             log(NLayerModelService.GenerateStaticFiles("Model", _appSetting.ModelLayerProjectName));
 
             // 3. Auth
-            if (_appSetting.IsThereIdentiy)
+            if (_appSetting.IsThereIdentity)
             {
                 log(NLayerModelService.GenerateAuthModels());
             }

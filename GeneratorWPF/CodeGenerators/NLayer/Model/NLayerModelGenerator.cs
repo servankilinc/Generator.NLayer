@@ -1,4 +1,4 @@
-﻿using GeneratorWPF.CodeGenerators.NLayer.Base;
+using GeneratorWPF.CodeGenerators.NLayer.Base;
 using GeneratorWPF.Models;
 using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Models.Statics;
@@ -231,7 +231,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         }
 
         #region RefreshToken
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             var identityTypeConfigs = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
 
@@ -406,7 +406,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                 .Include(x => x.Validations).ThenInclude(x => x.ValidatorType)
                 .Include(x => x.Validations).ThenInclude(x => x.ValidationParams)
             );
-        bool isExistValidation = dtoFieldList.Any(f => f.Validations != null);
+        bool isExistValidation = dtoFieldList.Any(f => f.Validations != null && f.Validations.Any());
 
         #region 1) Property List
         List<PropertyDeclarationSyntax> properties = new();

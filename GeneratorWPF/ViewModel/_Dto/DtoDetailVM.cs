@@ -65,28 +65,14 @@ public class DtoDetailVM : BaseViewModel
         {
             StateStatics.DtoDetailAddDtoFieldDtoId = StateStatics.DtoDetailId;
             var dialog = new DtoFieldAddDialog(_navigation);
-            if (dialog.ShowDialog() == false)
-            {
-                return;
-            }
-            else
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         ShowUpdateDtoFieldCommand = new RellayCommand(obj =>
         {
             StateStatics.DtoDetailUpdateDtoFieldId = (int)obj;
             var dialog = new DtoFieldUpdateDialog(_navigation);
-            if (dialog.ShowDialog() == false)
-            {
-                return;
-            }
-            else
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         RemoveDtoFieldCommand = new RellayCommand(dtoFieldId =>
@@ -108,28 +94,14 @@ public class DtoDetailVM : BaseViewModel
         ShowCreateValidationCommand = new RellayCommand(obj =>
         {
             var dialog = new DtoValidationCreateDialog(_navigation);
-            if (dialog.ShowDialog() == false)
-            {
-                return;
-            }
-            else
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
 
         ShowAddValidationCommand = new RellayCommand(obj =>
         {
             var dialog = new DtoValidationAddDialog(_navigation);
-            if (dialog.ShowDialog() == false)
-            {
-                return;
-            }
-            else
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
 
@@ -137,14 +109,7 @@ public class DtoDetailVM : BaseViewModel
         {
             StateStatics.DtoDetailValidationId = (int)validationId;
             var dialog = new DtoValidationUpdateDialog(_navigation);
-            if (dialog.ShowDialog() == false)
-            {
-                return;
-            }
-            else
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
 

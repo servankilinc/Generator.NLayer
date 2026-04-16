@@ -31,20 +31,14 @@ public class EntityHomeVM : BaseViewModel
         ShowCreateDialogCommand = new RellayCommand(obj =>
         {
             var dialog = new EntityCreateDialog(navigation);
-            if (dialog.ShowDialog() == true)
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         ShowUpdateDialogCommand = new RellayCommand(obj =>
         {
             StateStatics.EntityUpdateId = (int)obj;
             var dialog = new EntityUpdateDialog(navigation);
-            if (dialog.ShowDialog() == true)
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         ShowDetailCommand = new RellayCommand(obj =>

@@ -1,4 +1,4 @@
-﻿using GeneratorWPF.CodeGenerators.NLayer.Core;
+using GeneratorWPF.CodeGenerators.NLayer.Core;
 using GeneratorWPF.Models;
 using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Models.Statics;
@@ -12,7 +12,6 @@ using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using static Azure.Core.HttpHeader;
 
 namespace GeneratorWPF.CodeGenerators.NLayer.Base;
 
@@ -70,7 +69,7 @@ public class NLayerGeneratorBase
                 foreach (var referance in referances)
                 {
                     // "../Core/Core.csproj"
-                    RunCommand(layerPath, "dotnet", $"dotnet add reference {referance}");
+                    RunCommand(layerPath, "dotnet", $"add reference {referance}");
                 }
             }
 
@@ -481,7 +480,7 @@ public class NLayerGeneratorBase
     {
         var constructorSyntax = SyntaxFactory
             .ConstructorDeclaration(name)
-            .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword));
+            .AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
 
         if (parameters?.Length > 0)
             constructorSyntax = constructorSyntax.AddParameterListParameters(parameters);
@@ -500,14 +499,14 @@ public class NLayerGeneratorBase
         return constructorSyntax.NormalizeWhitespace();
     }
 
-    protected StatementSyntax StatementExpression(string from, string to)
+    /// <summary>Generates: <c>left = right;</c></summary>
+    protected StatementSyntax StatementExpression(string left, string right)
     {
-        // SyntaxFactory.ParseStatement("_mapper = mapper;"),
         return SyntaxFactory.ExpressionStatement(
             SyntaxFactory.AssignmentExpression(
                 SyntaxKind.SimpleAssignmentExpression,
-                SyntaxFactory.IdentifierName(to),
-                SyntaxFactory.IdentifierName(from)
+                SyntaxFactory.IdentifierName(left),
+                SyntaxFactory.IdentifierName(right)
             )
         ).NormalizeWhitespace();
     }

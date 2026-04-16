@@ -1,4 +1,4 @@
-﻿using Generator.NTier.CodeGenerators.NLayer.Business.Helpers;
+using Generator.NTier.CodeGenerators.NLayer.Business.Helpers;
 using GeneratorWPF.CodeGenerators.NLayer.Base;
 using GeneratorWPF.Extensions;
 using GeneratorWPF.Models;
@@ -102,11 +102,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 )
             );
 
-            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Service", code_abstract.ToFullString()));
-            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Service", code_concrete.ToFullString()));
+            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Service.cs", code_abstract.ToFullString()));
+            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Service.cs", code_concrete.ToFullString()));
         }
 
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             var code_IAuthService = CompilationUnit(
                 usings: [
@@ -216,7 +216,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                 ),
 
                                 MethodDeclaration(
-                                    modifiers: [SyntaxKind.PrivateKeyword],
+                                    modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                                     name: "LoginAsync",
                                     returnType: $"Task<Result<LoginResponse>>",
                                     parameters: [
@@ -305,7 +305,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     "
                                 ),
                                 MethodDeclaration(
-                                    modifiers: [SyntaxKind.PrivateKeyword],
+                                    modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                                     name: "SignUpAsync",
                                     returnType: $"Task<Result<SignUpResponse>>",
                                     parameters: [
@@ -396,7 +396,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     "
                                 ),
                                 MethodDeclaration(
-                                    modifiers: [SyntaxKind.PrivateKeyword],
+                                    modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                                     name: "RefreshAsync",
                                     returnType: $"Task<Result<RefreshAuthResponse>>",
                                     parameters: [
@@ -523,8 +523,8 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 )
             );
 
-            results.Add(AddFile(folderPathAbstract, "IAuthService", code_IAuthService.ToFullString()));
-            results.Add(AddFile(folderPathConcrete, "AuthService", code_AuthService.ToFullString()));
+            results.Add(AddFile(folderPathAbstract, "IAuthService.cs", code_IAuthService.ToFullString()));
+            results.Add(AddFile(folderPathConcrete, "AuthService.cs", code_AuthService.ToFullString()));
         }
 
         return string.Join("\n", results);
@@ -1247,7 +1247,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             $"{_appSetting.BusinessLayerProjectName}.Abstract",
             $"{_appSetting.BusinessLayerProjectName}.Concrete"
         };
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             usings.Add($"{_appSetting.BusinessLayerProjectName}.Utils.TokenService");
         }
@@ -1255,7 +1255,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region Body
         StringBuilder sbBody = new();
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             sbBody.AppendLine("services.AddSingleton<ITokenService, TokenService>();");
             sbBody.AppendLine("services.AddScoped<IAuthService, AuthService>();");

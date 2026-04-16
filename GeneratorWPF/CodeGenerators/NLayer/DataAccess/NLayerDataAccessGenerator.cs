@@ -1,4 +1,4 @@
-﻿using Humanizer;
+using Humanizer;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.EntityFrameworkCore;
@@ -37,14 +37,14 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         foreach (var entity in entities)
         {
-            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Repository", IRepository(entity.Name)));
-            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Repository", Repository(entity.Name)));
+            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Repository.cs", IRepository(entity.Name)));
+            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Repository.cs", Repository(entity.Name)));
         }
 
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
-            results.Add(AddFile(folderPathAbstract, "IRefreshTokenRepository", IRepository("RefreshToken")));
-            results.Add(AddFile(folderPathConcrete, "RefreshTokenRepository", Repository("RefreshToken")));
+            results.Add(AddFile(folderPathAbstract, "IRefreshTokenRepository.cs", IRepository("RefreshToken")));
+            results.Add(AddFile(folderPathConcrete, "RefreshTokenRepository.cs", Repository("RefreshToken")));
         }
 
         return string.Join("\n", results);
@@ -116,8 +116,8 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName, "UoW");
 
-        results.Add(AddFile(folderPath, "IUnitOfWork", IUnitOfWork(entities)));
-        results.Add(AddFile(folderPath, "UnitOfWork", UnitOfWork(entities)));
+        results.Add(AddFile(folderPath, "IUnitOfWork.cs", IUnitOfWork(entities)));
+        results.Add(AddFile(folderPath, "UnitOfWork.cs", UnitOfWork(entities)));
 
         return string.Join("\n", results);
     }
@@ -127,7 +127,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         var properties = new List<PropertyDeclarationSyntax>();
         foreach (var entity in entities)
             properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
             properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
 
         var fileds = new List<FieldDeclarationSyntax>()
@@ -148,10 +148,10 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                 ..entities.Select(e => StatementExpression(e.Name.Pluralize(), $"{e.Name}Repository".ToCamelCase())),
             ]
         );
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             constructor = constructor.AddParameterListParameters(ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository", false));
-            constructor = constructor.AddBodyStatements(StatementExpression("refreshTokens", "RefreshTokens"));
+            constructor = constructor.AddBodyStatements(StatementExpression("RefreshTokens", "refreshTokenRepository"));
         }
 
         var methodsConcrete = new List<MethodDeclarationSyntax>()
@@ -301,7 +301,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         var properties = new List<PropertyDeclarationSyntax>();
         foreach (var entity in entities)
             properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
             properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
 
         var abstractMethods = new List<MethodDeclarationSyntax>()
@@ -374,14 +374,14 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         #region DbSets
         var dbSets = entities.Select(e =>
-            _appSetting.IsThereIdentiy && ((e.Id == _appSetting.UserEntityId && e.Name == "User") || (e.Id == _appSetting.RoleEntityId && e.Name == "Role")) ?
+            _appSetting.IsThereIdentity && ((e.Id == _appSetting.UserEntityId && e.Name == "User") || (e.Id == _appSetting.RoleEntityId && e.Name == "Role")) ?
                 PropertyDeclaration($"override DbSet<{e.Name}>", e.Name.Pluralize(), true) :
                 PropertyDeclaration($"DbSet<{e.Name}>", e.Name.Pluralize(), true)
-        );
-        if (_appSetting.IsThereIdentiy)
-            dbSets.Append(PropertyDeclaration("DbSet<RefreshToken>", "RefreshTokens", true));
-        dbSets.Append(PropertyDeclaration("DbSet<Log>", "Logs", true));
-        dbSets.Append(PropertyDeclaration("DbSet<Archive>", "Archives", true));
+        ).ToList();
+        if (_appSetting.IsThereIdentity)
+            dbSets.Add(PropertyDeclaration("DbSet<RefreshToken>", "RefreshTokens", true));
+        dbSets.Add(PropertyDeclaration("DbSet<Log>", "Logs", true));
+        dbSets.Add(PropertyDeclaration("DbSet<Archive>", "Archives", true));
         #endregion
 
         #region Model Builders
@@ -463,7 +463,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             );
         }
 
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             modelBuilders.Add(SyntaxFactory.ParseStatement(@"
                 modelBuilder.Entity<RefreshToken>(r =>
@@ -492,7 +492,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             });")
         );
 
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             if (!_appSetting.IsThereUser)
             {
@@ -573,7 +573,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                     ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "AppDbContext",
-                        baseTypes: _appSetting.IsThereIdentiy
+                        baseTypes: _appSetting.IsThereIdentity
                             ? [SyntaxFactory.ParseTypeName($"IdentityDbContext<{IdentityUserType}, {IdentityRoleType}, {IdentityKeyType}>")]
                             : [SyntaxFactory.ParseTypeName("DbContext")],
                         members: [
@@ -598,7 +598,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         ).ToFullString();
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName, "Contexts");
-        results.Add(AddFile(folderPath, "AppDbContext", context));
+        results.Add(AddFile(folderPath, "AppDbContext.cs", context));
 
         return string.Join("\n", results);
     }
@@ -616,9 +616,9 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
     private StatementSyntax RelationOneToMany(char eSc, char f_eSc, Relation relation)
     {
         return SyntaxFactory.ParseStatement(
-            @$"{eSc}.HasOne({eSc} => {eSc}.{relation.PrimaryEntityVirPropName})
+            @$"{eSc}.HasMany({eSc} => {eSc}.{relation.PrimaryEntityVirPropName})
             .WithOne({f_eSc} => {f_eSc}.{relation.ForeignEntityVirPropName})
-            .HasForeignKey<{relation.ForeignField.Entity.Name}>({f_eSc} => {f_eSc}.{relation.ForeignField.Name})
+            .HasForeignKey({f_eSc} => {f_eSc}.{relation.ForeignField.Name})
             .OnDelete({relation.GetOnDeleteType()});"
         );
     }
@@ -633,7 +633,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         foreach (var entity in entities)
             sb.AppendLine($"services.AddScoped<I{entity.Name}Repository, {entity.Name}Repository>();");
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
             sb.AppendLine("services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();");
 
         sb.AppendLine(@"
@@ -675,7 +675,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                         name: "ServiceRegistration",
                         members: [
                             MethodDeclaration(
-                                modifiers: [SyntaxKind.ProtectedKeyword, SyntaxKind.StaticKeyword],
+                                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
                                 name: "AddDataAccessServices",
                                 returnType: "IServiceCollection",
                                 parameters: [

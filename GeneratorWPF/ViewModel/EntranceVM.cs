@@ -8,9 +8,10 @@ using System.Windows.Input;
 
 namespace GeneratorWPF.ViewModel
 {
-    public class EntranceVM : BaseViewModel
+    public class EntranceVM : BaseViewModel, IDisposable
     {
         private readonly INavigationService _navigationService;
+        private readonly LocalContext localContext;
         public ICommand ContinueCommand { get; set; }
         public ICommand AddNewProjectCommand { get; set; }
         public ICommand DeleteProjectCommand { get; set; }
@@ -52,7 +53,7 @@ namespace GeneratorWPF.ViewModel
         {
             _navigationService = navigationService;
 
-            var localContext = new LocalContext();
+            localContext = new LocalContext();
             Projects = new ObservableCollection<Project>(localContext.Projects);
 
             ContinueCommand = new RellayCommand(obj =>
@@ -141,6 +142,14 @@ namespace GeneratorWPF.ViewModel
                     MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             });
+        }
+
+        public void Dispose()
+        {
+            if (localContext != null)
+            {
+                localContext.Dispose();
+            }
         }
     }
 }

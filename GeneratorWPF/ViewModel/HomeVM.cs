@@ -123,10 +123,8 @@ namespace GeneratorWPF.ViewModel
             ShowGenerateCommand = new RellayCommand(obj =>
             {
                 var dialog = new GenerateDialog(_navigationService);
-                if (dialog.ShowDialog() == true)
-                {
-                    dialog.Show();
-                }
+
+                dialog.ShowDialog();
             });
 
 

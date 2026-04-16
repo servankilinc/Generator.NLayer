@@ -683,7 +683,7 @@ public class MenuItem
         }
 
         // Accout Controller
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             string code_AccountController = @"using Business.Abstract;
 using Core.Utils.ExceptionHandle.Exceptions;
@@ -852,7 +852,7 @@ public class UIController : Controller
         sb.AppendLine("using Serilog.Filters;");
         sb.AppendLine("using System.Threading.RateLimiting;");
         sb.AppendLine("using WebUI.ExceptionHandler;");
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             sb.AppendLine("using Core.Utils.Auth;");
             sb.AppendLine("using DataAccess.Contexts;");
@@ -875,7 +875,7 @@ public class UIController : Controller
         AddLayerRegistrations(ref sb);
         AddAutofacModules(ref sb);
 
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             var identityTypeConfigs = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
 
@@ -1001,7 +1001,7 @@ app.MapControllerRoute(
         }
 
         #region Account Views
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             string code_Login = @"@using Model.Auth.Login
 @model LoginRequest

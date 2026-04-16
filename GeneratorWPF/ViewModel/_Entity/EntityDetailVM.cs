@@ -60,39 +60,27 @@ public class EntityDetailVM : BaseViewModel
         ShowRelationsDialogCommand = new RellayCommand(obj =>
         {
             var dialog = new FieldRelationsDialog(navigationService);
-            if (dialog.ShowDialog() == true)
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         ShowRelationsUpdateDialogCommand = new RellayCommand(obj =>
         {
             StateStatics.RelationUpdateId = (int)obj;
             var dialog = new FieldRelationsUpdateDialog(navigationService);
-            if (dialog.ShowDialog() == true)
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         ShowFieldUpdateDialogCommand = new RellayCommand(obj =>
         {
             StateStatics.FieldUpdateId = (int)obj;
             var dialog = new FieldUpdateDialog(navigationService);
-            if (dialog.ShowDialog() == true)
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         ShowAddFieldCommand = new RellayCommand(obj =>
         {
             var dialog = new EntityAddFieldDialog(_navigation);
-            if (dialog.ShowDialog() == true)
-            {
-                dialog.Show();
-            }
+            dialog.ShowDialog();
         });
 
         RemoveFieldCommand = new RellayCommand(obj =>

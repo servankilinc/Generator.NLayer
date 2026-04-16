@@ -28,7 +28,7 @@ public partial class RoslynApiControllerGenerator
         // 1) Attribute List
         List<AttributeSyntax> attributeList = new List<AttributeSyntax>();
 
-        if (_appSetting.IsThereIdentiy) attributeList.Add(SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("Authorize")));
+        if (_appSetting.IsThereIdentity) attributeList.Add(SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("Authorize")));
         attributeList.Add(SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("ApiController")));
         attributeList.Add(
             SyntaxFactory.Attribute(

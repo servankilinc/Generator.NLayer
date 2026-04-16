@@ -12,7 +12,7 @@ namespace GeneratorWPF.Models
         public string? Path { get; set; }
         public string? DBConnectionString { get; set; }
 
-        public bool IsThereIdentiy { get; set; }
+        public bool IsThereIdentity { get; set; }
 
         public bool IsThereUser { get; set; }
         public int? UserEntityId { get; set; }
@@ -23,7 +23,7 @@ namespace GeneratorWPF.Models
         public virtual Entity? RoleEntity { get; set; }
 
 
-        public string SolutionPath { get => System.IO.Path.Combine(this.Path ?? "", this.ProjectName ?? ""); }
+        public string SolutionPath { get => System.IO.Path.Combine(this.Path ?? "", this.SolutionName ?? ""); }
         public string CoreLayerProjectName { get => $"{this.ProjectName}.Core"; }
         public string ModelLayerProjectName { get => $"{this.ProjectName}.Model"; }
         public string BusinessLayerProjectName { get => $"{this.ProjectName}.Business"; }

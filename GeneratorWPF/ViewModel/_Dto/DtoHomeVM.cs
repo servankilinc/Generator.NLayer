@@ -47,14 +47,7 @@ namespace GeneratorWPF.ViewModel._Dto
             ShowCreateCommand = new RellayCommand(RellayCommand =>
             {
                 var dialog = new DtoCreateDialog(_navigation);
-                if (dialog.ShowDialog() == false)
-                {
-                    return;
-                }
-                else
-                {
-                    dialog.Show();
-                }
+                dialog.ShowDialog();
             });
 
             ShowDetailCommand = new RellayCommand(dtoId =>
@@ -67,14 +60,7 @@ namespace GeneratorWPF.ViewModel._Dto
             {
                 StateStatics.DtoUpdateId = (int)dtoId;
                 var dialog = new DtoUpdateDialog(_navigation);
-                if (dialog.ShowDialog() == false)
-                {
-                    return;
-                }
-                else
-                {
-                    dialog.Show();
-                }
+                dialog.ShowDialog();
             });
 
             RemoveCommand = new RellayCommand(dtoId =>

@@ -315,7 +315,7 @@ public sealed class ScalarSecuritySchemeTransformer(IAuthenticationSchemeProvide
         sb.AppendLine("using Serilog.Filters;");
         sb.AppendLine("using Scalar.AspNetCore;");
         sb.AppendLine("using System.Threading.RateLimiting;");
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             sb.AppendLine("using Model.Entities;");
             sb.AppendLine("using Core.Utils.Auth;");
@@ -332,7 +332,7 @@ public sealed class ScalarSecuritySchemeTransformer(IAuthenticationSchemeProvide
         AddLogImplemantation(ref sb);
         AddLayerRegistrations(ref sb);
         AddAutofacModules(ref sb);
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             var identityTypeConfigs = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
             string IdentityKeyType = identityTypeConfigs.IdentityKeyType;
@@ -458,7 +458,7 @@ public sealed class ScalarSecuritySchemeTransformer(IAuthenticationSchemeProvide
 
             results.Add(AddFile(folderPath, $"{entity.Name}Controller", code_controller));
         }
-        if (_appSetting.IsThereIdentiy)
+        if (_appSetting.IsThereIdentity)
         {
             string code_AccountController = @"
 using Business.Abstract;

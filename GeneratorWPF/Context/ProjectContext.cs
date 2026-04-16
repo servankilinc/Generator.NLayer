@@ -17,7 +17,7 @@ namespace GeneratorWPF.Context
         // Dynamic Version
         public ProjectContext(): base(GetOptions())
         {
-            this.Database.Migrate();
+            this.Database.Migrate(); // ❌ Her Repository işleminde migration çalışır, performans sorunu
         }
 
         private static DbContextOptions<ProjectContext> GetOptions()
@@ -79,7 +79,7 @@ namespace GeneratorWPF.Context
                     Path = "C:\\Generator",
                     ProjectName = "MyProject",
                     SolutionName = "MyProject",
-                    IsThereIdentiy = true,
+                    IsThereIdentity = true,
                     Control = false,
                     DBConnectionString = "Data Source=.; Initial Catalog=MyGeneratedDatabase; Integrated Security=SSPI; Trusted_Connection=True; TrustServerCertificate=True;"
                 });
@@ -293,8 +293,8 @@ namespace GeneratorWPF.Context
                     .HasForeignKey(r => r.RelationTypeId);
 
                 rt.HasData(
-                    new RelationType { Id = (int)RelationTypeEnums.OneToOne, Name = "OnoToOne" },
-                    new RelationType { Id = (int)RelationTypeEnums.OneToMany, Name = "OnoToMany" }
+                    new RelationType { Id = (int)RelationTypeEnums.OneToOne, Name = "OneToOne" },
+                    new RelationType { Id = (int)RelationTypeEnums.OneToMany, Name = "OneToMany" }
                 );
             });
             #endregion
@@ -600,7 +600,7 @@ namespace GeneratorWPF.Context
 
                 mrf.HasOne(mrf => mrf.Method)
                     .WithOne(m => m.MethodReturnField)
-                    .HasForeignKey<MethodReturnField>(mrf => mrf.FieldTypeId);
+                    .HasForeignKey<MethodReturnField>(mrf => mrf.MethodId);
 
                 mrf.HasOne(mrf => mrf.FieldType)
                     .WithMany(ft => ft.MethodReturnFields)
