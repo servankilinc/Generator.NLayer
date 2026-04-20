@@ -8,16 +8,23 @@ namespace GeneratorWPF.Context
 {
     public class ProjectContext : DbContext
     {
-        // Static Version
+        // Static Version (migration dosyası üretileceği zaman açılmalı dynamic ise kapatılmalı)
         //protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         //{
-        //    optionsBuilder.UseSqlServer("Data Source=.; Initial Catalog=CodeGeneratorV3; Integrated Security=SSPI; Trusted_Connection=True; TrustServerCertificate=True;");
+        //    optionsBuilder.UseSqlite($"Data Source=Test.db");
         //}
 
+
+        private static string? lastMigratedDb = string.Empty;
+
         // Dynamic Version
-        public ProjectContext(): base(GetOptions())
+        public ProjectContext() : base(GetOptions())
         {
-            this.Database.Migrate(); // ❌ Her Repository işleminde migration çalışır, performans sorunu
+            if (lastMigratedDb != StateStatics.CurrentProject?.ProjectName)
+            {
+                lastMigratedDb = StateStatics.CurrentProject?.ProjectName;
+                this.Database.Migrate();
+            }
         }
 
         private static DbContextOptions<ProjectContext> GetOptions()

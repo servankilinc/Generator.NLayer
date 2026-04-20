@@ -7,7 +7,7 @@ using GeneratorWPF.CodeGenerators.NLayer.Model;
 using GeneratorWPF.CodeGenerators.NLayer.WebUI;
 using GeneratorWPF.Models;
 using GeneratorWPF.Repository;
-using System.IO;
+using System.Security.Cryptography;
 
 namespace GeneratorWPF.CodeGenerators.NLayer;
 
@@ -172,10 +172,10 @@ public class NLayerGeneratorService
             // 1. Create Core Class Library if not exists
             log(nLayerBusinessService.CreateClassLibrearyProject(_appSetting.BusinessLayerProjectName, referances: [$"../{_appSetting.DataAccessLayerProjectName}/{_appSetting.DataAccessLayerProjectName}.csproj"]));
 
-            // 2. Static Files(Utils.TokenService)
+            // 2. Static Files
             log(nLayerBusinessService.GenerateStaticFiles("Business", _appSetting.BusinessLayerProjectName, new
             {
-                identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository)
+                identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
             }));
 
             // 3. Mappings
@@ -204,32 +204,26 @@ public class NLayerGeneratorService
                 throw new Exception("App Settings Not Completted To Generate!");
 
             var nLayerAPIService = new NLayerAPIService(_appSetting);
-
-            string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
-
+             
             // 1. Create Core Class Library if not exists
-            log(nLayerAPIService.CreateProject(solutionPath, _appSetting.SolutionName));
+            log(nLayerAPIService.CreateProject());
 
             // 2. Add Packages
-            log(nLayerAPIService.AddPackage(solutionPath, "Microsoft.AspNetCore.Authentication.JwtBearer"));
-            log(nLayerAPIService.AddPackage(solutionPath, "Microsoft.AspNetCore.OpenApi"));
-            log(nLayerAPIService.AddPackage(solutionPath, "Microsoft.EntityFrameworkCore.Design"));
-            log(nLayerAPIService.AddPackage(solutionPath, "Scalar.AspNetCore"));
+            log(nLayerAPIService.AddPackage("Microsoft.AspNetCore.Authentication.JwtBearer --version 10.0.4", _appSetting.WebAPILayerProjectName));
+            log(nLayerAPIService.AddPackage("Microsoft.AspNetCore.OpenApi --version 10.0.4", _appSetting.WebAPILayerProjectName));
+            log(nLayerAPIService.AddPackage("Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.WebAPILayerProjectName));
+            log(nLayerAPIService.AddPackage("Scalar.AspNetCore--version 2.14.1", _appSetting.WebAPILayerProjectName));
 
-            // 3. Exception Handler
-            log(nLayerAPIService.GenerateExceptionHandler(solutionPath));
+            // 3. Static Files
+            log(nLayerAPIService.GenerateStaticFiles("API", _appSetting.WebAPILayerProjectName, new
+            {
+                identity_api_registration_code = nLayerAPIService.GetIdentityRegistrationCode(),
+                db_connection_name = _appSetting.DBConnectionString,
+                securityKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64))
+            }));
 
-            // 4. Scalar Security Scheme Transformer
-            log(nLayerAPIService.GenerateScalarSecuritySchemeTransformer(solutionPath));
-
-            // 5. Program.cs
-            log(nLayerAPIService.GenerateProgramCs(solutionPath));
-
-            // 6. Mappings
-            log(nLayerAPIService.GenerateAppSettings(solutionPath));
-
-            // 7. Controllers
-            log(nLayerAPIService.GenerateControllers(solutionPath));
+            // 4. Controllers
+            log(nLayerAPIService.GenerateControllers());
 
             return true;
         }
@@ -249,26 +243,26 @@ public class NLayerGeneratorService
                 throw new Exception("App Settings Not Completted To Generate!");
 
             var nLayerWebUIService = new NLayerWebUIGenerator(_appSetting);
-
-            string solutionPath = Path.Combine(_appSetting.Path, _appSetting.SolutionName);
+             
 
             // 1. Create Project if not exists
-            log(nLayerWebUIService.CreateProject(solutionPath, _appSetting.SolutionName));
+            log(nLayerWebUIService.CreateProject());
 
             // 2. Add Packages
-            log(nLayerWebUIService.AddPackage(solutionPath, "FluentValidation.AspNetCore"));
-            log(nLayerWebUIService.AddPackage(solutionPath, "Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation"));
-            log(nLayerWebUIService.AddPackage(solutionPath, "Microsoft.VisualStudio.Web.CodeGeneration.Design"));
-            log(nLayerWebUIService.AddPackage(solutionPath, "Microsoft.EntityFrameworkCore.Design"));
+            log(nLayerWebUIService.AddPackage("FluentValidation.AspNetCore --version 11.3.1", _appSetting.WebUILayerProjectName));
+            log(nLayerWebUIService.AddPackage("Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation --version 10.0.4", _appSetting.WebUILayerProjectName));
+            log(nLayerWebUIService.AddPackage("Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.WebUILayerProjectName));
 
-            // 3. Utils
-            log(nLayerWebUIService.GenerateUtils(solutionPath));
-
-            // 4. Exception Handler
-            log(nLayerWebUIService.GenerateExceptionHandler(solutionPath));
-
+            // 3. Utils =>   => GetIdentityRegistrationCode
+            log(nLayerWebUIService.GenerateStaticFiles("WebUI", _appSetting.WebUILayerProjectName, new
+            {
+                identity_web_ui_registration_code = nLayerWebUIService.GetIdentityRegistrationCode(),
+                db_connection_name = _appSetting.DBConnectionString,
+                identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
+            }));
+             
             // 5. Side Menu ViewComponent
-            log(nLayerWebUIService.GenerateSideMenuViewComponent(solutionPath));
+            log(nLayerWebUIService.GenerateSideMenuViewComponent());
 
             // 6. wwwroot
             log(nLayerWebUIService.Generate_wwwroot(solutionPath));

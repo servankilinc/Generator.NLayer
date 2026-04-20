@@ -1,5 +1,4 @@
-﻿using GeneratorWPF.Extensions;
-using GeneratorWPF.Models.Signature;
+﻿using GeneratorWPF.Models.Signature;
 using GeneratorWPF.Repository;
 
 namespace GeneratorWPF.Models
@@ -28,6 +27,9 @@ namespace GeneratorWPF.Models
         public string ModelLayerProjectName { get => $"{this.ProjectName}.Model"; }
         public string BusinessLayerProjectName { get => $"{this.ProjectName}.Business"; }
         public string DataAccessLayerProjectName { get => $"{this.ProjectName}.DataAccess"; }
+        public string WebAPILayerProjectName { get => $"{this.ProjectName}.WebAPI"; }
+        public string WebUILayerProjectName { get => $"{this.ProjectName}.WebUI"; }
+
         public IdentityModelTypes GetIdentityModelTypeNames(EntityRepository entityRepository, FieldRepository fieldRepository)
         {
             Entity? roleEntity = null;

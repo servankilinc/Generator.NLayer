@@ -45,7 +45,7 @@ public class NLayerGeneratorBase
         }
     }
 
-    public string CreateClassLibrearyProject(string layerProjectName, string[]? referances = null)
+    public  virtual string CreateClassLibrearyProject(string layerProjectName, string[]? referances = null)
     {
         try
         {
@@ -55,13 +55,11 @@ public class NLayerGeneratorBase
             if (Directory.Exists(layerPath) && File.Exists(csprojPath))
                 return $"INFO: {layerProjectName} already exists.";
 
+            bool isSlnx = File.Exists(Path.Combine(_appSetting.SolutionPath, $"{_appSetting.SolutionName}.slnx"));
+
             RunCommand(_appSetting.SolutionPath, "dotnet", $"new classlib -n {layerProjectName}");
-
-            if (File.Exists(Path.Combine(_appSetting.SolutionPath, $"{_appSetting.SolutionName}.slnx")))
-                RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.slnx add {layerProjectName}/{layerProjectName}.csproj");
-            else
-                RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.sln add {layerProjectName}/{layerProjectName}.csproj");
-
+            RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.{(isSlnx ? "slnx" : "sln")} add {layerProjectName}/{layerProjectName}.csproj");
+            
             RemoveFile(layerPath, "Class1.cs");
 
             if (referances != null && referances.Length > 0)
@@ -112,7 +110,10 @@ public class NLayerGeneratorBase
                 ["core_project_name"] = _appSetting.CoreLayerProjectName,
                 ["model_project_name"] = _appSetting.ModelLayerProjectName,
                 ["dataAccess_project_name"] = _appSetting.DataAccessLayerProjectName,
-                ["business_project_name"] = _appSetting.BusinessLayerProjectName
+                ["business_project_name"] = _appSetting.BusinessLayerProjectName,
+                ["api_project_name"] = _appSetting.WebAPILayerProjectName,
+                ["webui_project_name"] = _appSetting.WebUILayerProjectName,
+                ["project_name"] = _appSetting.ProjectName!
             };
 
             if (extendedOptions != null)
@@ -286,6 +287,50 @@ public class NLayerGeneratorBase
             throw new Exception($"ERROR: An error occurred while removing file ({fileName}) \n Details: {ex.Message}");
         }
     }
+
+    protected string RemoveFolder(string folderPath)
+    {
+        try
+        {
+            string filePath = Path.Combine(folderPath);
+
+            if (Directory.Exists(filePath))
+            {
+                Directory.Delete(filePath, true);
+                return $"OK: Folder {folderPath} removed.";
+            }
+            else
+            {
+                return $"INFO: Folder {folderPath} does not exist.";
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"ERROR: An error occurred while removing folder ({folderPath}) \n Details: {ex.Message}");
+        }
+    }
+
+    protected string CopyDirectory(string sourceDir, string destinationDir)
+    {
+        if (!Directory.Exists(destinationDir))
+            Directory.CreateDirectory(destinationDir);
+
+        //return $"INFO: Directory {sourceDir} already exists in WebUI project.";
+
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            string targetFilePath = Path.Combine(destinationDir, Path.GetFileName(file));
+            File.Copy(file, targetFilePath, true);
+        }
+
+        foreach (var directory in Directory.GetDirectories(sourceDir))
+        {
+            string targetSubDir = Path.Combine(destinationDir, Path.GetFileName(directory));
+            CopyDirectory(directory, targetSubDir);
+        }
+
+        return $"OK: Directory {sourceDir} added to WebUI project.";
+    }
     #endregion
 
 
@@ -315,7 +360,7 @@ public class NLayerGeneratorBase
         return parameter.NormalizeWhitespace();
     }
 
-    protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, AttributeSyntax[]? attributes = null)
+    protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, SyntaxKind[]? modifiers = null, AttributeSyntax[]? attributes = null)
     {
         if (required == false && !type.EndsWith("?") && !Statics.nonReferanceTypes.Contains(type))
             type += "?";
@@ -324,7 +369,7 @@ public class NLayerGeneratorBase
 
         var property = SyntaxFactory
             .PropertyDeclaration(SyntaxFactory.ParseTypeName(type), SyntaxFactory.Identifier(name))
-            .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
+            .AddModifiers(modifiers != null && modifiers.Length > 0 ? modifiers.Select(SyntaxFactory.Token).ToArray() : [SyntaxFactory.Token(SyntaxKind.PublicKeyword)])
             .AddAccessorListAccessors(
                 SyntaxFactory
                     .AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)

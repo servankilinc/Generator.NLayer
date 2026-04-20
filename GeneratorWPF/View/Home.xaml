@@ -72,7 +72,7 @@
             <DockPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20, 10">
                     <Label>Identity:</Label>
-                    <CheckBox IsChecked="{Binding AppSettingModel.IsThereIdentiy, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" VerticalAlignment="Center" />
+                    <CheckBox IsChecked="{Binding AppSettingModel.IsThereIdentity, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20, 10">
                     <Label>Is There User:</Label>

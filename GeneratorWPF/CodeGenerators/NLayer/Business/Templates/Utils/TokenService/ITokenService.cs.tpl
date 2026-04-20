@@ -1,7 +1,7 @@
-﻿using {{ core_project_name }}.Utils.Auth;
+﻿using System.Security.Claims;
+using {{ core_project_name }}.Utils.Auth;
 using {{ core_project_name }}.Utils.ResultPattern;
 using {{ model_project_name }}.Entities;
-using System.Security.Claims;
 
 namespace {{ business_project_name }}.Utils.TokenService;
 

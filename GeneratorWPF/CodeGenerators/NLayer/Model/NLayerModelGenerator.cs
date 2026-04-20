@@ -48,7 +48,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                         members: [
                             PropertyDeclaration("string", "Email", false),
                             PropertyDeclaration("string", "UserName", false),
-                            PropertyDeclaration("string", "Password", true, [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
+                            PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
                             PropertyDeclaration("Guid", "DeviceId", false),
                             PropertyDeclaration("string", "ClientType", true)
                         ]
@@ -164,7 +164,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                         members: [
                             PropertyDeclaration("string", "Email", true),
                             PropertyDeclaration("string", "UserName", true),
-                            PropertyDeclaration("string", "Password", true, [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
+                            PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
                             PropertyDeclaration("Guid", "DeviceId", false),
                             PropertyDeclaration("string", "ClientType", true)
                         ]
@@ -347,18 +347,18 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         {
             if (relation.RelationTypeId == (int)RelationTypeEnums.OneToOne)
             {
-                propertyList.Add(PropertyDeclaration($"{relation.ForeignField.Entity.Name}?", relation.PrimaryEntityVirPropName));
+                propertyList.Add(PropertyDeclaration($"{relation.ForeignField.Entity.Name}?", relation.PrimaryEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
         }
         foreach (var relation in relationsOnForeign)
         {
             if (relation.RelationTypeId == (int)RelationTypeEnums.OneToOne)
             {
-                propertyList.Add(PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName));
+                propertyList.Add(PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
             else if (relation.RelationTypeId == (int)RelationTypeEnums.OneToMany)
             {
-                propertyList.Add(PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName));
+                propertyList.Add(PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
         }
 
@@ -366,13 +366,13 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         {
             if (relation.RelationTypeId == (int)RelationTypeEnums.OneToMany)
             {
-                propertyList.Add(PropertyDeclaration($"ICollection<{relation.ForeignField.Entity.Name}>?", relation.PrimaryEntityVirPropName));
+                propertyList.Add(PropertyDeclaration($"ICollection<{relation.ForeignField.Entity.Name}>?", relation.PrimaryEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
         }
 
         if (entityId == _appSetting.UserEntityId)
         {
-            propertyList.Add(PropertyDeclaration("ICollection<RefreshToken>?", "RefreshTokens"));
+            propertyList.Add(PropertyDeclaration("ICollection<RefreshToken>?", "RefreshTokens", modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
         }
     }
     #endregion
@@ -433,9 +433,13 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             if (!dtoField.SourceField.IsRequired)
                 fieldTypeName = $"{fieldTypeName}?";
             if (dtoField.IsList)
+            {
                 fieldTypeName = $"List<{fieldTypeName}>";
-            if (!dtoField.IsRequired)
-                fieldTypeName = $"{fieldTypeName}?";
+                if (!dtoField.SourceField.IsRequired)
+                    fieldTypeName = $"{fieldTypeName}?";
+            }
+            //if (!dtoField.IsRequired)
+            //    fieldTypeName = $"{fieldTypeName}?";
 
             properties.Add(PropertyDeclaration(fieldTypeName, dtoField.Name, dtoField.IsRequired));
         }
@@ -514,7 +518,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         return CompilationUnit(
             usings: [.. usings],
             nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Dtos.{dto.RelatedEntity.Name}",
+                value: $"{_appSetting.ModelLayerProjectName}.Dtos.{dto.RelatedEntity.Name}.{(dto.CrudTypeId == (int)CrudTypeEnums.Read ? "Queries" : "Commands")}",
                 members: [.. classes]
             )
         ).ToFullString();

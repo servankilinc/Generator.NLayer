@@ -132,8 +132,8 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         var fileds = new List<FieldDeclarationSyntax>()
         {
-            FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context"),
-            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction")
+            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction"),
+            FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context")
         };
 
         var constructor = ConstructorDeclaration(
@@ -141,7 +141,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             name: "UnitOfWork",
             parameters: [
                 ParameterDeclaration("AppDbContext", "context"),
-                ..entities.Select(e => ParameterDeclaration($"I{e.Name}Repository", $"{e.Name}Repository".ToCamelCase(), false)),
+                ..entities.Select(e => ParameterDeclaration($"I{e.Name}Repository", $"{e.Name}Repository".ToCamelCase())),
             ],
             statements: [
                 StatementExpression("_context", "context"),
@@ -150,7 +150,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         );
         if (_appSetting.IsThereIdentity)
         {
-            constructor = constructor.AddParameterListParameters(ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository", false));
+            constructor = constructor.AddParameterListParameters(ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository"));
             constructor = constructor.AddBodyStatements(StatementExpression("RefreshTokens", "refreshTokenRepository"));
         }
 
@@ -691,7 +691,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
          );
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName);
-        return AddFile(folderPath, "ServiceRegistration", code.ToFullString());
+        return AddFile(folderPath, "ServiceRegistration.cs", code.ToFullString());
     }
     #endregion
 }

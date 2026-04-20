@@ -36,5 +36,19 @@ namespace GeneratorWPF.Models
                     this.Id == entity.DetailResponseDtoId ? "GetDetailAsync" :
                     $"Get{this.Name}Async";
         }
+
+
+        public string PresentationLayerListMethodName(Entity entity)
+        {
+            return this.Id == entity.BasicResponseDtoId ? "GetBaseList" :
+                    this.Id == entity.DetailResponseDtoId ? "GetDetailList" :
+                    $"Get{this.Name}List";
+        }
+        public string PresentationLayerGetMethodName(Entity entity)
+        {
+            return this.Id == entity.BasicResponseDtoId ? "GetBase" :
+                    this.Id == entity.DetailResponseDtoId ? "GetDetail" :
+                    $"Get{this.Name}";
+        }
     }
 }

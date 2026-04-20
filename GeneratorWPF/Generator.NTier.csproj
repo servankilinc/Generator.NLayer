@@ -14,6 +14,27 @@
 		<None Remove="Images\MEng.jpg" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Compile Include="CodeGenerators\NLayer\API\Templates\Controllers\AccountController.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\API\Templates\Controllers\Base\BaseController.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\API\Templates\ExceptionHandler\ExceptionHandleMiddleware.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\API\Templates\Program.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\API\Templates\Utils\ScalarSecuritySchemeTransformer.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Controllers\AccountController.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Controllers\Base\BaseController.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Controllers\Base\ErrorController.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Controllers\Base\UIController.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Middlewares\ExceptionHandleMiddleware.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Models\Auth\LoginRequest.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Models\Auth\SignUpRequest.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Models\UI\Breadcrum.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Models\UI\LocalizationItem.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Models\UI\MenuItem.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Program.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\Utils\Extensions\HttpContextExtensions.cs.tpl" />
+	  <Compile Include="CodeGenerators\NLayer\WebUI\Templates\ViewComponents\HeaderViewComponent.cs.tpl" />
+	</ItemGroup>
+
 
 	<ItemGroup>
 		<PackageReference Include="Humanizer" Version="2.14.1" />

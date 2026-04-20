@@ -534,7 +534,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
     {
         var methods = new List<MethodDeclarationSyntax>();
 
-        List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).ToList();
+        List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
         var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
 
         var reportDto = dtos.FirstOrDefault(f => f.Id == entity.ReportDtoId);
@@ -605,7 +605,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 name: dto.ServiceGetListMethodName(entity),
                 returnType: $"Task<Result<ICollection<{dto.Name}>>>",
                 parameters: [
-                    ..uniqueFieldParameters,
+                    ParameterDeclaration("DynamicRequest", "request", false),
                     ParameterDeclaration("CancellationToken", "cancellationToken", false)
                 ],
                 isThereBody: false
@@ -746,7 +746,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
     {
         var methods = new List<MethodDeclarationSyntax>();
 
-        List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).ToList();
+        List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
         var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
 
         var reportDto = dtos.FirstOrDefault(f => f.Id == entity.ReportDtoId);
@@ -860,7 +860,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 name: dto.ServiceGetListMethodName(entity),
                 returnType: $"Task<Result<ICollection<{dto.Name}>>>",
                 parameters: [
-                    ..uniqueFieldParameters,
+                    ParameterDeclaration("DynamicRequest", "request", false),
                     ParameterDeclaration("CancellationToken", "cancellationToken", false)
                 ],
                 body: $@"
@@ -1230,7 +1230,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         ).ToFullString();
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Mappings");
-        return AddFile(folderPath, "MappingProfiles", code);
+        return AddFile(folderPath, "MappingProfiles.cs", code);
     }
     #endregion
 
@@ -1297,7 +1297,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         );
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName);
-        return AddFile(folderPath, "ServiceRegistration", code.ToFullString());
+        return AddFile(folderPath, "ServiceRegistration.cs", code.ToFullString());
     }
     #endregion
 }

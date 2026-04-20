@@ -145,6 +145,7 @@ public class DtoFieldCreateDto : ObversableObject
                 {
                     var fieldData = this._fieldRepository.Get(f => f.Id == value);
                     this.Name = fieldData.Name;
+                    this.IsRequired = fieldData.IsRequired;
                 }
             }
         }

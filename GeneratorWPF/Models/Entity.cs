@@ -39,7 +39,12 @@ namespace GeneratorWPF.Models
 
         public string GetUniqueArgs()
         {
-            return String.Join(", ", Fields.Where(f => f.IsUnique).Select(f => $"{f.GetMapedTypeName()} {f.Name.ToCamelCase()}").ToArray());
+            return String.Join(", ", Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).Select(f => $"{f.GetMapedTypeName()} {f.Name.ToCamelCase()}"));
+        }
+        
+        public string GetConstraintRule()
+        {
+            return String.Join("/", Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).Select(f => $"{f.Name.ToCamelCase()}:{f.GetMapedTypeName().ToLower()}"));
         }
 
         public string WhereRule(List<Field> uniqueFields, string? sourceName = null)
@@ -47,7 +52,7 @@ namespace GeneratorWPF.Models
             bool hasSource = !string.IsNullOrWhiteSpace(sourceName);
             sourceName = hasSource ? sourceName!.Trim() : "";
 
-            var conditions = uniqueFields.Select(f =>
+            var conditions = uniqueFields.OrderBy(f => f.Name).Select(f =>
             {
                 var right = hasSource ? $"{sourceName}.{f.Name}" : f.Name.ToCamelCase();
                 return $"f.{f.Name} == {right}";
