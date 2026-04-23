@@ -34,26 +34,7 @@ public class ViewGenerator
         if (filterableFields.Any()) modelFilterFields = CreateFilterInputsModel(entity, filterableFields);
 
         StringBuilder sb = new StringBuilder();
-
-        sb.Append($@"
-@using WebUI.Models.ViewModels.{entity.Name}_
-@model {entity.Name}ViewModel
-@{{
-    ViewData[""Title""] = ""{entity.Name.Pluralize()}"";
-}}");
-
-        // ########## HTML ##########
-        sb.AppendLine("\r<div class=\"card\">");
-
-        // ******** HEADER ********
-        sb.AppendLine("\t<div class=\"card-header\">");
-        if (filterableFields.Any() || entity.SoftDeletable)
-        {
-            sb.Append(CreateFilterForm(entity, modelFilterFields));
-        }
-        sb.AppendLine("\t</div>");
-
-
+         
         // ******** BODY ********
         sb.AppendLine("\t<div class=\"card-body\">");
 
@@ -97,52 +78,7 @@ public class ViewGenerator
         return sb.ToString();
     }
 
-    public string GenerateCreatePage(Entity entity)
-    {
-        List<Field> fieldList = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id, include: i => i.Include(x => x.FieldType));
-
-        Dto? createDto = entity.CreateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(x => x.SourceField)) : default;
-        bool isThereCreateDto = createDto != default;
-        
-        List<ModelFieldInput> modelInputs = new List<ModelFieldInput>();
-        if (isThereCreateDto)
-        {
-            modelInputs = CreateFormInputsModelByDto(entity, createDto!, "Create", "CreateModel");
-        }
-        else
-        {
-            modelInputs = CreateFormInputsModelByEntity(entity, fieldList, "Create", "CreateModel");
-        }
-            
-        StringBuilder sb = new StringBuilder();
-
-        sb.AppendLine($@"
-@using WebUI.Models.ViewModels.{entity.Name}_
-@model {entity.Name}CreateViewModel
-@{{
-    ViewData[""Title""] = ""Create {entity.Name}"";
-}}");
-
-        // ########## HTML ##########
-        sb.AppendLine("\r<div class=\"card\">");
-
-        // ******** HEADER ********
-        sb.AppendLine("\t<div class=\"card-header\">");
-        sb.AppendLine($"\t\tCreate {entity.Name}");
-        sb.AppendLine("\t</div>");
-
-
-        // ******** BODY ********
-        sb.AppendLine("\t<div class=\"card-body\">");
-
-        sb.AppendLine(CreateForm(entity, fieldList, modelInputs!, "Create", true, createDto));
-        
-        sb.AppendLine("\t</div>");
-        sb.AppendLine("</div>");
-
-        return sb.ToString();
-    }
-
+ 
     public string GenerateCreateFormPage(Entity entity)
     {
         List<Field> fieldList = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id, include: i => i.Include(x => x.FieldType));

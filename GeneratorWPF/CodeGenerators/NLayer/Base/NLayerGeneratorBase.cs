@@ -1,4 +1,3 @@
-using GeneratorWPF.CodeGenerators.NLayer.Core;
 using GeneratorWPF.Models;
 using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Models.Statics;
@@ -7,9 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Scriban;
 using System.Diagnostics;
-using System.Dynamic;
 using System.IO;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -360,7 +357,7 @@ public class NLayerGeneratorBase
         return parameter.NormalizeWhitespace();
     }
 
-    protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, SyntaxKind[]? modifiers = null, AttributeSyntax[]? attributes = null)
+    protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, SyntaxKind[]? modifiers = null, AttributeSyntax[]? attributes = null, bool earlyInstance = false)
     {
         if (required == false && !type.EndsWith("?") && !Statics.nonReferanceTypes.Contains(type))
             type += "?";
@@ -382,7 +379,18 @@ public class NLayerGeneratorBase
         if (attributes?.Length > 0)
             property = property.AddAttributeLists(SyntaxFactory.AttributeList(SyntaxFactory.SeparatedList(attributes)));
 
-        if (required == true && !Statics.nonReferanceTypes.Contains(type))
+        if (earlyInstance == true)
+        {
+            property = property
+                .WithInitializer(
+                    SyntaxFactory.EqualsValueClause(
+                        SyntaxFactory.ObjectCreationExpression(SyntaxFactory.ParseTypeName(type))
+                        .WithArgumentList(SyntaxFactory.ArgumentList())
+                    )
+                )
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+        }
+        else if (required == true && !Statics.nonReferanceTypes.Contains(type))
         {
             property = property
                 .WithInitializer(
@@ -512,7 +520,7 @@ public class NLayerGeneratorBase
                 SyntaxFactory.GenericName("AbstractValidator").WithTypeArgumentList(
                     SyntaxFactory.TypeArgumentList(
                         SyntaxFactory.SingletonSeparatedList<TypeSyntax>(
-                            SyntaxFactory.IdentifierName(modelName)
+                            SyntaxFactory.ParseTypeName(modelName)
                         )
                     )
                 )
@@ -532,7 +540,7 @@ public class NLayerGeneratorBase
 
         if (baseArgs != null)
         {
-            var arrOfBaseArgs = baseArgs.Select(arg => SyntaxFactory.Argument(SyntaxFactory.IdentifierName(arg))).ToArray();
+            var arrOfBaseArgs = baseArgs.Select(arg => SyntaxFactory.Argument(SyntaxFactory.ParseTypeName(arg))).ToArray();
             constructorSyntax = constructorSyntax
                 .WithInitializer(
                     SyntaxFactory.ConstructorInitializer(SyntaxKind.BaseConstructorInitializer)
@@ -550,9 +558,80 @@ public class NLayerGeneratorBase
         return SyntaxFactory.ExpressionStatement(
             SyntaxFactory.AssignmentExpression(
                 SyntaxKind.SimpleAssignmentExpression,
-                SyntaxFactory.IdentifierName(left),
-                SyntaxFactory.IdentifierName(right)
+                SyntaxFactory.ParseTypeName(left),
+                SyntaxFactory.ParseTypeName(right)
             )
+        ).NormalizeWhitespace();
+    }
+    
+    protected LocalDeclarationStatementSyntax LocalDeclaration(string type, string name, ExpressionSyntax expression)
+    {
+        return SyntaxFactory.LocalDeclarationStatement(
+            SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(type))
+                .WithVariables(
+                    SyntaxFactory.SingletonSeparatedList(
+                        SyntaxFactory.VariableDeclarator(SyntaxFactory.Identifier(name))
+                        .WithInitializer(
+                            SyntaxFactory.EqualsValueClause(expression)
+                        )
+                    )
+                )
+            ).NormalizeWhitespace();
+    }
+
+    // ex: expression: "GetDataAsync()", isAsync: true generates: await GetDataAsync();
+    // ex: expression: "Calculate()", isAsync: false generates: Calculate();
+    protected ExpressionSyntax ExpressionStatement(string expression, bool isAsync = false)
+    {
+        return  
+            isAsync
+                ? SyntaxFactory.AwaitExpression(SyntaxFactory.ParseExpression(expression)).NormalizeWhitespace()
+                : SyntaxFactory.ParseExpression(expression).NormalizeWhitespace();
+    }
+
+    // ex: typeName: "Book", arguments: [MemberAccessExpression("Title", "The Great Gatsby"), MemberAccessExpression("Author", "F. Scott Fitzgerald")]
+    // generates: new Book { Title = "The Great Gatsby", Author = "F. Scott Fitzgerald" }
+    protected ObjectCreationExpressionSyntax ObjectCreation(string typeName, params ExpressionSyntax[] members)
+    {
+        return SyntaxFactory.ObjectCreationExpression(SyntaxFactory.ParseTypeName(typeName))
+            .WithInitializer(
+                SyntaxFactory.InitializerExpression(
+                    SyntaxKind.ObjectInitializerExpression,
+                    SyntaxFactory.SeparatedList(members)
+                )
+            );
+    }
+    // ex: typeName: "List<string>", arguments: [LiteralExpression("Item1"), LiteralExpression("Item2")]
+    // generates: new List<string> { "Item1", "Item2" }
+    protected ObjectCreationExpressionSyntax ObjectCreationCollection(string typeName, params ExpressionSyntax[] items)
+    {
+        return SyntaxFactory.ObjectCreationExpression(SyntaxFactory.ParseTypeName(typeName))
+            .WithInitializer(
+                SyntaxFactory.InitializerExpression(
+                    SyntaxKind.CollectionInitializerExpression,
+                    SyntaxFactory.SeparatedList(items)
+                )
+            );
+    }
+
+
+    // ex: memberName: "Title", instanceName: "book"
+    // generates: Title = "The Great Gatsby"
+    protected AssignmentExpressionSyntax PropertyAssignment(string name, string value)
+    {
+        return SyntaxFactory.AssignmentExpression(
+            SyntaxKind.SimpleAssignmentExpression,
+            SyntaxFactory.ParseTypeName(name),
+            SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(value))
+        ).NormalizeWhitespace();
+    }
+
+
+    protected ReturnStatementSyntax ReturnStatement(string type)
+    {
+        return SyntaxFactory.ReturnStatement(
+            SyntaxFactory.InvocationExpression(
+                SyntaxFactory.ParseName(type)) 
         ).NormalizeWhitespace();
     }
     #endregion

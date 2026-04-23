@@ -1,6 +1,12 @@
 ﻿using GeneratorWPF.CodeGenerators.NLayer.Base;
+using GeneratorWPF.Extensions;
 using GeneratorWPF.Models;
+using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Repository;
+using Humanizer;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.EntityFrameworkCore;
 using System.IO;
 using System.Text;
@@ -12,11 +18,13 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
     private readonly EntityRepository _entityRepository;
     private readonly FieldRepository _fieldRepository;
     private readonly DtoRepository _dtoRepository;
+    private readonly RelationRepository _relationRepository;
     public NLayerWebUIGenerator(AppSetting appSetting) : base(appSetting)
     {
         _entityRepository = new();
         _fieldRepository = new();
         _dtoRepository = new();
+        _relationRepository = new();
     }
 
     public string CreateProject()
@@ -99,79 +107,1169 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         ";
     }
 
-    // 1. ViewComponents/SideMenuViewComponent.cs
-    // 2. Models/ViewModels
-    // 3. Controllers
+    // 1. ViewComponents/SideMenuViewComponent.cs OK
+    // 2. Models/ViewModels OK
+    // 3. Controllers OK
     // 4. Views
     // 5. wwwroot
 
-    public string GenerateSideMenuViewComponent(string solutionPath)
+    #region SideMenuViewComponent
+    public string GenerateSideMenuViewComponent()
     {
-        string section1 = @"
-using Microsoft.AspNetCore.Mvc;
-using WebUI.Models.UI;
-
-namespace WebUI.ViewComponents;
-
-public class SideMenuViewComponent : ViewComponent
-{
-    public IViewComponentResult Invoke()
-    {
-        var menuItems = new List<MenuItem>()
-        {
-            new MenuItem
-            {
-                Title = ""Dashboard"",
-                Icon = ""fa-brands fa-magento"",
-                Path = ""/Home/Index"",
-                Type = 1,
-            },";
-
-        string section2 = @"
-        };
-        return View(menuItems);
-    }
-}";
-
-        StringBuilder stringBuilder = new StringBuilder();
-
         List<Entity> entities = _entityRepository.GetAll();
+        entities = entities.OrderBy(e => e.Name).ToList();
 
+        var code = CompilationUnit(
+            usings: [
+                "Microsoft.AspNetCore.Mvc",
+                $"{_appSetting.WebUILayerProjectName}.Models.UI",
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.WebUILayerProjectName}.ViewComponents",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: "SideMenuViewComponent",
+                        baseTypes: [SyntaxFactory.ParseTypeName("ViewComponent")],
+                        members: [
+                            GenerateInvokeMethod(entities),
+                            MethodDeclaration(
+                                modifiers: [SyntaxKind.PrivateKeyword],
+                                returnType: "bool",
+                                name: "HandleActiveMenu",
+                                parameters: [
+                                    ParameterDeclaration("MenuItem", "item"),
+                                    ParameterDeclaration("string", "currentPath")
+                                ],
+                                body: @"
+                                    bool isActive = !string.IsNullOrWhiteSpace(item.Path) && (currentPath.Equals(item.Path, StringComparison.OrdinalIgnoreCase) || currentPath.StartsWith(item.Path + ""/"", StringComparison.OrdinalIgnoreCase));
+                                    bool hasActiveChild = false;
+
+                                    if (item.SubMenuItems != null)
+                                    {
+                                        foreach (var child in item.SubMenuItems)
+                                        {
+                                            if (HandleActiveMenu(child, currentPath))
+                                                hasActiveChild = true;
+                                        }
+                                    }
+
+                                    item.IsActive = isActive;
+                                    item.HasActiveChild = hasActiveChild;
+
+                                    return isActive || hasActiveChild;
+                                "
+                            )
+                        ]
+                    )
+                ]
+            )
+        );
+
+
+        string folderPathMenuItem = System.IO.Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "ViewComponents");
+        return AddFile(folderPathMenuItem, "SideMenuViewComponent.cs", code.ToFullString());
+    }
+
+    private MethodDeclarationSyntax GenerateInvokeMethod(List<Entity> entities)
+    {
+        List<ObjectCreationExpressionSyntax> subMenuItems = new();
         foreach (Entity entity in entities)
         {
-            string groupName = entities.FindIndex(f => f.Id == entity.Id) == 0 ? "GroupName = \"Pages\"," : "";
-
-            stringBuilder.AppendLine($@"
-      new MenuItem
-            {{
-                Title = ""{entity.Name}"",
-                Icon = ""fa-regular fa-folder-open"",
-                Type = 0,
-                {groupName}
-                SubMenuItems = new List<MenuItem>()
-                {{
-                    new MenuItem
-                    {{
-                        Title = ""Managment"",
-                        Icon = ""fa-regular fa-file-lines"",
-                        Path = ""/{entity.Name}/Index"",
-                        Type = 1,
-                    }},
-                    new MenuItem
-                    {{
-                        Title = ""Create"",
-                        Icon = ""fa-solid fa-file-circle-plus"",
-                        Path= ""/{entity.Name}/Create"",
-                        Type = 1,
-                    }}
-                }}
-            }},");
+            subMenuItems.Add(
+                ObjectCreation(
+                    typeName: "MenuItem",
+                    members: [
+                        PropertyAssignment(name: "Title", value: $"\"{entity.Name}\""),
+                        PropertyAssignment(name: "Icon", value: "\"<i class=\\\"ki-duotone ki-right text-gray-900 fs-2tx\\\"></i>\""),
+                        PropertyAssignment(name: "Path", value:  $"\"/{entity.Name}/Index\""),
+                    ]
+                )
+            );
         }
-        string code = section1 + stringBuilder.ToString() + section2;
-        string folderPathMenuItem = Path.Combine(solutionPath, "WebUI", "ViewComponents");
-        return AddFile(folderPathMenuItem, "SideMenuViewComponent", code);
+        var menuItems = LocalDeclaration(
+            type: "var",
+            name: "menuItems",
+            expression: ObjectCreationCollection(
+                typeName: "List<MenuItem>",
+                items: [
+                    ObjectCreation(
+                        typeName: "MenuItem",
+                        members: [
+                            PropertyAssignment(name: "Title", value: "\"Dashboard\""),
+                            PropertyAssignment(name: "Icon", value: "\"<i class=\\\"ki-duotone ki-element-11 fs-2\\\"><span class=\\\"path1\\\"></span><span class=\\\"path2\\\"></span><span class=\\\"path3\\\"></span><span class=\\\"path4\\\"></span></i>\""),
+                            PropertyAssignment(name: "Path", value: "\"/Home/Index\"")
+                        ]
+                    ),
+                    ObjectCreationCollection(
+                        typeName: "List<MenuItem>",
+                        items: [
+                            ..subMenuItems
+                        ]
+                    )
+                ]
+            )
+        );
+
+        return MethodDeclaration(
+            modifiers: [SyntaxKind.PublicKeyword],
+            returnType: "IViewComponentResult",
+            name: "Invoke",
+            block: SyntaxFactory.Block(
+                menuItems,
+                SyntaxFactory.ParseStatement(@"
+                    string currentPath = (HttpContext.Request.Path.Value ?? string.Empty).TrimEnd('/');
+                    foreach (var menu in menuItems)
+                    {
+                        HandleActiveMenu(menu, currentPath);
+                    }
+                    return View(menuItems);
+                ")
+            )
+        );
     }
-  
+    #endregion
+
+    #region ViewModels
+    public string GenerateViewModels()
+    {
+        var results = new List<string>();
+
+        var entities = _entityRepository.GetAll(f => f.Control == false);
+
+        foreach (var entity in entities)
+        {
+            string folderPath = System.IO.Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Models", "ViewModels", $"{entity.Name}");
+
+            results.Add(AddFile(folderPath, $"{entity.Name}ViewModel.cs", GenerateViewModelIndex(entity)));
+            results.Add(AddFile(folderPath, $"{entity.Name}CreateViewModel.cs", GenerateViewModelCreate(entity)));
+            results.Add(AddFile(folderPath, $"{entity.Name}UpdateViewModel.cs", GenerateViewModelUpdate(entity)));
+        }
+
+        return string.Join("\n", results);
+    }
+
+    private string GenerateViewModelIndex(Entity entity)
+    {
+        #region ViewModel Properties
+        var vmPropList = new List<PropertyDeclarationSyntax>();
+        // SelectList Props
+        List<Field> filterableFields = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.Filterable, include: i => i.Include(x => x.FieldType));
+        foreach (var field in filterableFields)
+        {
+            Relation? relation = _relationRepository.Get(
+                filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+            );
+            if (relation == null) continue;
+
+            vmPropList.Add(PropertyDeclaration("SelectList", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+        }
+        // FilterModel Prop
+        if (filterableFields.Any() || entity.SoftDeletable)
+            vmPropList.Add(PropertyDeclaration($"{entity.Name}FilterModel", "FilterModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true));
+        #endregion
+
+        #region FilterModel Properties
+        var filerModelProperties = new List<MemberDeclarationSyntax>();
+        foreach (var field in filterableFields)
+            filerModelProperties.Add(PropertyDeclaration($"{field.GetMapedTypeName()}", field.Name, false, [SyntaxKind.PublicKeyword]));
+        if (entity.SoftDeletable)
+            filerModelProperties.Add(PropertyDeclaration("bool", "IsDeleted", false, [SyntaxKind.PublicKeyword]));
+        #endregion
+
+        var code = CompilationUnit(
+            usings: [
+                "Microsoft.AspNetCore.Mvc.Rendering",
+                $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: $"{entity.Name}ViewModel",
+                        members: [..vmPropList]
+                    ),
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: $"{entity.Name}FilterModel",
+                        members: [..filerModelProperties]
+                    )
+                ]
+            )
+        );
+
+        return code.ToFullString();
+    }
+    public string GenerateViewModelCreate(Entity entity)
+    {
+        Dto? createDto = entity.CreateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+        bool isThereCreateDto = createDto != default;
+        string createModelType = isThereCreateDto ? createDto!.Name : $"{_appSetting.ModelLayerProjectName}.Entities.{entity.Name}";
+
+        // Property List
+        var propertyList = new List<MemberDeclarationSyntax>
+        {
+            PropertyDeclaration(createModelType, "CreateModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true)
+        };
+
+        // SelectList Props
+        if (isThereCreateDto)
+        {
+            foreach (var dtoField in createDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+            {
+                Relation? relation = _relationRepository.Get(
+                    filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                    include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                propertyList.Add(PropertyDeclaration("SelectList", dtoField.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+            }
+        }
+        else
+        {
+            List<Field> baseFields = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType), enableTracking: false);
+            foreach (var field in baseFields)
+            {
+                Relation? relation = _relationRepository.Get(
+                    filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                    include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                propertyList.Add(PropertyDeclaration("SelectList", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+            }
+        }
+
+        return CompilationUnit(
+            usings: [
+                "Microsoft.AspNetCore.Mvc.Rendering",
+                isThereCreateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.Blog.Commands" : string.Empty,
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: $"{entity.Name}CreateViewModel",
+                        members: [.. propertyList]
+                    )
+                ]
+            )
+        ).ToFullString();
+    }
+    public string GenerateViewModelUpdate(Entity entity)
+    {
+        Dto? updateDto = entity.UpdateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.UpdateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+        bool isThereUpdateDto = updateDto != default;
+        string updateModelType = isThereUpdateDto ? updateDto!.Name : $"{_appSetting.ModelLayerProjectName}.Entities.{entity.Name}";
+
+        // Property List
+        var propertyList = new List<MemberDeclarationSyntax>
+        {
+            PropertyDeclaration(updateModelType, "UpdateModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true)
+        };
+
+        // SelectList Props
+        if (isThereUpdateDto)
+        {
+            foreach (var dtoField in updateDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+            {
+                Relation? relation = _relationRepository.Get(
+                    filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                    include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                propertyList.Add(PropertyDeclaration("SelectList?", dtoField.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+            }
+        }
+        else
+        {
+            List<Field> baseFields = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType));
+            foreach (var field in baseFields)
+            {
+                Relation? relation = _relationRepository.Get(
+                    filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                    include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                propertyList.Add(PropertyDeclaration("SelectList?", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+            }
+        }
+
+        return CompilationUnit(
+            usings: [
+                "Microsoft.AspNetCore.Mvc.Rendering",
+                isThereUpdateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.Blog.Commands" : string.Empty,
+            ],
+            nspace: NamespaceDeclaration(
+                value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
+                members: [
+                    ClassDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: $"{entity.Name}UpdateViewModel",
+                        members: [.. propertyList]
+                    )
+                ]
+            )
+        ).ToFullString();
+    }
+    #endregion
+
+    #region Controllers
+    public string GenerateControllers()
+    {
+        var results = new List<string>();
+
+        var entities = _entityRepository.GetAll(f => f.Control == false, include: i => i.Include(x => x.Fields));
+        foreach (var entity in entities)
+        {
+            var dtos = _dtoRepository.GetAll(
+                filter: f => f.RelatedEntityId == entity.Id,
+                include: i => i
+                    .Include(x => x.DtoFields).ThenInclude(x => x.SourceField)
+                    .Include(x => x.RelatedEntity).ThenInclude(ti => ti.Fields)
+            );
+
+            Dto? createDto = entity.CreateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+            bool isThereCreateDto = createDto != default;
+            Dto? updateDto = entity.UpdateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.UpdateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+            bool isThereUpdateDto = updateDto != default;
+
+            List<string> relationalEntities = new List<string>() { entity.Name };
+
+            Dictionary<string, string> selectableRelations_index = new Dictionary<string, string>(); // field name of foreign entity(this entity), field name of primary entity
+            Dictionary<string, string> selectableRelations_create = new Dictionary<string, string>();
+            Dictionary<string, string> selectableRelations_update = new Dictionary<string, string>();
+
+            #region RelationalEntities && SelectableRelations
+            // Selectable Relations for Index Action Method
+            List<Field> filterableFields = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.Filterable && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType), enableTracking: false);
+            foreach (var field in filterableFields)
+            {
+                Relation? relation = _relationRepository.Get(
+                  filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                  include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                selectableRelations_index.Add(field.Name, relation.PrimaryField.Entity.Name);
+                if (!relationalEntities.Contains(relation.PrimaryField.Entity.Name))
+                    relationalEntities.Add(relation.PrimaryField.Entity.Name);
+            }
+
+            // Selectable Relations for Create Action Method
+            if (isThereCreateDto)
+            {
+                foreach (var dtoField in createDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+                {
+                    Relation? relation = _relationRepository.Get(
+                        filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                        include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                    );
+                    if (relation == null) continue;
+
+                    selectableRelations_create.Add(dtoField.Name, relation.PrimaryField.Entity.Name);
+                    if (!relationalEntities.Contains(relation.PrimaryField.Entity.Name))
+                        relationalEntities.Add(relation.PrimaryField.Entity.Name);
+                }
+            }
+            else
+            {
+                List<Field> baseFields = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType), enableTracking: false);
+                foreach (var field in baseFields)
+                {
+                    Relation? relation = _relationRepository.Get(
+                        filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                        include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                    );
+                    if (relation == null) continue;
+
+                    selectableRelations_create.Add(field.Name, relation.PrimaryField.Entity.Name);
+                    if (!relationalEntities.Contains(relation.PrimaryField.Entity.Name))
+                        relationalEntities.Add(relation.PrimaryField.Entity.Name);
+                }
+            }
+
+            // Selectable Relations for Update Action Method
+            if (isThereUpdateDto)
+            {
+                foreach (var dtoField in updateDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+                {
+                    Relation? relation = _relationRepository.Get(
+                        filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                        include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                    );
+                    if (relation == null) continue;
+
+                    selectableRelations_update.Add(dtoField.Name, relation.PrimaryField.Entity.Name);
+                    if (!relationalEntities.Contains(relation.PrimaryField.Entity.Name))
+                        relationalEntities.Add(relation.PrimaryField.Entity.Name);
+                }
+            }
+            else
+            {
+                List<Field> baseFields = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType), enableTracking: false);
+                foreach (var field in baseFields)
+                {
+                    Relation? relation = _relationRepository.Get(
+                        filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                        include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                    );
+                    if (relation == null) continue;
+
+                    selectableRelations_update.Add(field.Name, relation.PrimaryField.Entity.Name);
+                    if (!relationalEntities.Contains(relation.PrimaryField.Entity.Name))
+                        relationalEntities.Add(relation.PrimaryField.Entity.Name);
+                }
+            }
+            #endregion
+
+            #region Usings
+            List<string> usings = new()
+            {
+                "Microsoft.AspNetCore.Mvc",
+                $"{_appSetting.CoreLayerProjectName}.BaseRequestModels",
+                $"{_appSetting.ModelLayerProjectName}.Entities",
+                $"{_appSetting.BusinessLayerProjectName}.Abstract",
+                $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}"
+            };
+            if (dtos.Any(f => f.CrudTypeId != (byte)CrudTypeEnums.Read))
+                usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands");
+            if (dtos.Any(f => f.CrudTypeId == (byte)CrudTypeEnums.Read))
+                usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Queries");
+            #endregion
+
+
+            #region Fields
+            List<FieldDeclarationSyntax> fields =
+            [
+                .. relationalEntities.Select(e => FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{e.Name}Service", $"_{e.Name.ToCamelCase()}Service")),
+            ];
+            #endregion
+
+            #region Constructor Parameters
+            List<ParameterSyntax> constructorParams =
+            [
+                ParameterDeclaration($"ILogger<{entity.Name}Controller>", "logger"),
+                .. relationalEntities.Select(e => ParameterDeclaration($"I{e}Service", $"{e.ToCamelCase()}Service"))
+            ];
+            #endregion
+
+
+            #region Constructor Statement Expressions
+            List<StatementSyntax> constructorStatements =
+            [
+                .. relationalEntities.Select(e => StatementExpression($"_{e.ToCamelCase()}Service", $"{e.ToCamelCase()}Service"))
+            ];
+            #endregion
+
+            var code_controller = CompilationUnit(
+                usings: [.. usings],
+                nspace: NamespaceDeclaration(
+                    value: $"{_appSetting.WebUILayerProjectName}.Controllers",
+                    members: [
+                        ClassDeclaration(
+                            name: $"{entity.Name}Controller",
+                            modifiers: [SyntaxKind.PublicKeyword],
+                            baseTypes: [SyntaxFactory.ParseTypeName("BaseController")],
+                            members: [
+                                ..fields,
+                                ConstructorDeclaration(
+                                    modifiers: [SyntaxKind.PublicKeyword],
+                                    name: $"{entity.Name}Controller",
+                                    parameters: [
+                                        ..constructorParams
+                                    ],
+                                    baseArgs: ["logger"],
+                                    statements: [..constructorStatements]
+                                ),
+                                ..GenerateControllerMethods(entity, dtos, selectableRelations_index, selectableRelations_create, selectableRelations_update)
+                            ]
+                        )
+                    ]
+                )
+            );
+
+            string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Controllers");
+            results.Add(AddFile(folderPath, $"{entity.Name}Controller.cs", code_controller.ToFullString()));
+        }
+
+        return string.Join("\n", results);
+    }
+
+    private List<MethodDeclarationSyntax> GenerateControllerMethods(Entity entity, List<Dto> dtos, Dictionary<string, string> selectableRelations_index, Dictionary<string, string> selectableRelations_create, Dictionary<string, string> selectableRelations_update)
+    {
+        var methods = new List<MethodDeclarationSyntax>();
+
+        List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
+        var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
+
+        string methodUniqueArgs = string.Join(", ", uniqueFields.Select(f => $"{f.Name.ToCamelCase()}: {f.Name.ToCamelCase()}"));
+
+        string serviceName = $"_{entity.Name.ToCamelCase()}Service";
+
+        #region INDEX
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "Index",
+            returnType: "Task<IActionResult>",
+            block: SyntaxFactory.Block(
+                new List<StatementSyntax>(
+                [
+                    ..selectableRelations_index.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
+                    LocalDeclaration(
+                        type: "var",
+                        name: "viewModel",
+                        expression: ObjectCreation(
+                            typeName: $"{entity.Name}ViewModel",
+                            members: [
+                                ..selectableRelations_index.Select(sr =>
+                                    PropertyAssignment(
+                                        sr.Key.Pluralize(),
+                                        $"{sr.Key.ToCamelCase().Pluralize()}.Data"
+                                    )
+                                )
+                            ]
+                        )
+                    ),
+                    ReturnStatement("View(viewModel)")
+                ])
+            )
+        ));
+        #endregion
+
+        #region CREATE
+        var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "Create",
+            returnType: "Task<IActionResult>",
+            block: SyntaxFactory.Block(
+                new List<StatementSyntax>(
+                [
+                    ..selectableRelations_create.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
+                    LocalDeclaration(
+                        type: "var",
+                        name: "viewModel",
+                        expression: ObjectCreation(
+                            typeName: $"{entity.Name}CreateViewModel",
+                            members: [
+                                ..selectableRelations_create.Select(sr =>PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
+                            ]
+                        )
+                    ),
+                    ReturnStatement("PartialView(\"./Partials/CreateForm\", viewModel)")
+                ])
+            )
+        ));
+
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "Create",
+            returnType: "Task<IActionResult>",
+            parameters: [
+                ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true)
+            ],
+            body: $@"
+                var result = await {serviceName}.CreateAsync(request);
+                return ToAction(result);
+            "
+        ));
+        #endregion
+
+        #region UPDATE
+        var updateDto = dtos.FirstOrDefault(f => f.Id == entity.UpdateDtoId);
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "Update",
+            returnType: "Task<IActionResult>",
+            parameters: [
+                ..uniqueFieldParameters
+            ],
+            block: SyntaxFactory.Block(
+                new List<StatementSyntax>(
+                [
+                    SyntaxFactory.ParseStatement(@$"
+                        var result = await {serviceName}.GetUpdateModelAsync({methodUniqueArgs});
+                        if (!result.IsSuccess) return ToAction(result);
+                    "),
+                    ..selectableRelations_update.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
+                    LocalDeclaration(
+                        type: "var",
+                        name: "viewModel",
+                        expression: ObjectCreation(
+                            typeName: $"{entity.Name}UpdateViewModel",
+                            members: [
+                                ..selectableRelations_update.Select(sr => PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
+                            ]
+                        )
+                    ),
+                    ReturnStatement("PartialView(\"./Partials/UpdateForm\", viewModel)")
+                ])
+            )
+        ));
+
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "Update",
+            returnType: "Task<IActionResult>",
+            parameters: [
+                ParameterDeclaration(createDto?.Name ?? entity.Name, "updateModel", true)
+            ],
+            body: $@"
+                var result = await {serviceName}.UpdateAsync(updateModel);
+                return ToAction(result);
+            "
+        ));
+        #endregion
+
+        #region DELETE
+        var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
+        if (deleteDto != null)
+        {
+            methods.Add(MethodDeclaration(
+                attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "Delete",
+                returnType: "Task<IActionResult>",
+                parameters:
+                [
+                    ParameterDeclaration(deleteDto.Name, "deleteModel", true)
+                ],
+                body: $@"
+                    var result = await {serviceName}.DeleteAsync(deleteModel);
+                    return ToAction(result);
+                "
+            ));
+        }
+        else
+        {
+            methods.Add(MethodDeclaration(
+                attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "Delete",
+                returnType: "Task<IActionResult>",
+                parameters:
+                [
+                    ..uniqueFieldParameters
+                ],
+                body: $@"
+                    var result = await {serviceName}.DeleteAsync({methodUniqueArgs});
+                    return ToAction(result);
+                "
+            ));
+        }
+        #endregion
+
+        #region RESTORE
+        if (entity.SoftDeletable)
+        {
+            methods.Add(MethodDeclaration(
+                attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
+                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                name: "Restore",
+                returnType: "Task<IActionResult>",
+                parameters: [
+                    ..uniqueFieldParameters
+                ],
+                body: $@"
+                    var result = await {serviceName}.RestoreAsync({methodUniqueArgs});
+                    return ToAction(result);
+                "
+            ));
+        }
+        #endregion
+
+        #region DATATABLE 
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "DatatableClientSide",
+            returnType: "Task<IActionResult>",
+            parameters: [
+                ParameterDeclaration("DynamicDatatableRequest", "request", true)
+            ],
+            body: $@"
+                var result = await {serviceName}.DatatableClientSideAsync(request);
+                return ToAction(result);
+            "
+        ));
+        methods.Add(MethodDeclaration(
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
+            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+            name: "DatatableServerSide",
+            returnType: "Task<IActionResult>",
+            parameters: [
+                ParameterDeclaration("DynamicDatatableRequest", "request", true)
+            ],
+            body: $@"
+                var result = await {serviceName}.DatatableServerSideAsync(request);
+                return ToAction(result);
+            "
+        ));
+        #endregion
+
+        return methods;
+    }
+    #endregion
+
+    #region Views
+    public string GenerateViews()
+    {
+        var results = new List<string>();
+
+        var entities = _entityRepository.GetAll(f => f.Control == false, include: i => i.Include(x => x.Fields));
+
+        foreach (var entity in entities)
+        {
+            string code_indexPage = GenerateIndexPage(entity);
+            string code_createFormPage = viewGenerator.GenerateCreateFormPage(entity);
+            string code_updateFormPage = viewGenerator.GenerateUpdateFormPage(entity);
+
+            string pathView = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Views", entity.Name);
+            string pathPartial = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Views", entity.Name, "Partials");
+
+            results.Add(AddFile(pathView, $"Index.cshtml", code_indexPage));
+
+            results.Add(AddFile(pathPartial, $"CreateForm.cshtml", code_createFormPage));
+            results.Add(AddFile(pathPartial, $"UpdateForm.cshtml", code_updateFormPage));
+        }
+
+        return string.Join("\n", results);
+    }
+
+    public string GenerateIndexPage(Entity entity)
+    {
+        List<Field> fieldList = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType), enableTracking: false);
+        var filterableFields = fieldList.Where(f => f.Filterable).ToList();
+
+        List<(string fieldName, (int inputType, int inputKind, string inputCode) data)> filterInputs = new List<(string, (int, int, string))>();
+
+        Dto? reportDto = entity.ReportDtoId != default ? _dtoRepository.Get(f => f.Id == entity.ReportDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(x => x.SourceField.FieldType)) : default;
+        bool isThereReportDto = reportDto != default;
+
+        var selectableRelations = new Dictionary<string, string>(); // field name of foreign entity(this entity), field name of primary entity
+        foreach (var field in filterableFields)
+        {
+            Relation? relation = _relationRepository.Get(
+              filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+              include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+            );
+            if (relation == null) continue;
+
+            selectableRelations.Add(field.Name, relation.PrimaryField.Entity.Name);
+        }
+
+        #region Form Inputs
+        var codeFilterForm = new StringBuilder();
+
+        foreach (var field in filterableFields)
+        {
+            int inptType = field.GetVariableGroup(selectableRelations);
+            int inptKind = field.GetInputKind(inptType);
+            string inptCode = field.CreateInputHTML(inptType);
+            codeFilterForm.Append(inptCode);
+            filterInputs.Add((field.Name, (inptType, inptKind, inptCode)));
+        }
+        if (entity.SoftDeletable)
+        {
+            codeFilterForm.Append(@"
+                    <div class=""mb-10"">
+                        <div class=""form-check form-switch form-switch-sm form-check-custom form-check-solid"">
+                            <input name=""IsDeleted"" value=""false"" type=""hidden"" />
+                            <input name=""IsDeleted"" value=""true"" type=""checkbox"" class=""form-check-input"" />
+                            <span class=""form-check-label fs-sm"">Include Deleted</span>
+                        </div>
+                    </div>
+            ");
+        }
+        #endregion
+
+        #region Table Header Columns
+        StringBuilder tableHeaderColumns = new StringBuilder();
+        if (isThereReportDto)
+        {
+            foreach (var dtoField in reportDto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
+                tableHeaderColumns.AppendLine($"\t\t\t\t\t<th>{dtoField.Name.DivideToLabelName()}</th>");
+        }
+        else
+        {
+            foreach (var field in fieldList.Where(f => f.IsUnique == false))
+                tableHeaderColumns.AppendLine($"\t\t\t\t\t<th>{field.Name.DivideToLabelName()}</th>");
+        }
+
+        if (entity.Auditable)
+        {
+            tableHeaderColumns.AppendLine("\t\t\t\t\t<th>Create Date</th>");
+            tableHeaderColumns.AppendLine("\t\t\t\t\t<th>Last Update Date</th>");
+        }
+        if (entity.SoftDeletable)
+        {
+            tableHeaderColumns.AppendLine("\t\t\t\t\t<th>Status</th>");
+            tableHeaderColumns.AppendLine("\t\t\t\t\t<th>Delete Date</th>");
+        }
+        tableHeaderColumns.AppendLine("\t\t\t\t\t<th>Actions</th>");
+        #endregion
+
+        #region Datatable Filter Request Model
+        List<string> tempDataTableFilters = new List<string>();
+        foreach (var filterInput in filterInputs)
+        {
+            if (filterInput.data.inputKind == 1) // Select
+            {
+                tempDataTableFilters.Add($@" 
+                            {{
+                                operator: 'eq',
+                                field: '{filterInput.fieldName}',
+                                value: $(""select[name='{filterInput.fieldName}']"").val()
+                            }}
+                ");
+            }
+            else if (filterInput.data.inputKind == 2) // Equals
+            {
+                tempDataTableFilters.Add($@" 
+                            {{
+                                operator: 'eq',
+                                field: '{filterInput.fieldName}',
+                                value: $(""input[name='{filterInput.fieldName}']"").val()
+                            }}
+                ");
+            }
+            else if (filterInput.data.inputKind == 3) // Contains
+            {
+                tempDataTableFilters.Add($@" 
+                            {{
+                                operator: 'contains',
+                                field: '{filterInput.fieldName}',
+                                value: $(""input[name='{filterInput.fieldName}']"").val()
+                            }}
+                ");
+            }
+            else if (filterInput.data.inputKind == 4) // CheckBox
+            {
+                tempDataTableFilters.Add($@" 
+                            {{
+                                operator: 'eq',
+                                field: '{filterInput.fieldName}',
+                                value: $('input[name=""{filterInput.fieldName}""]:checked').prop(""checked"") || false,
+                            }}
+                ");
+            }
+        }
+        if (entity.SoftDeletable)
+        {
+            tempDataTableFilters.Add($@" 
+                            {{
+                                operator: 'base',
+                                logic: 'or',
+                                filters: [
+                                    {{
+                                        operator: 'eq',
+                                        field: 'IsDeleted',
+                                        value: false,
+                                    }},
+                                    {{
+                                        operator: 'eq',
+                                        field: 'IsDeleted',
+                                        value: $('input[name=""IsDeleted""]:checked').prop(""checked"") || false,
+                                    }}
+                                ]
+                            }}
+            ");
+        }
+        string codeDataTableFilters = string.Join(",", tempDataTableFilters);
+
+        string codeDatatableRequestData = $@"
+                requestData: {{
+                    filter: {{
+                        operator: 'base',
+                        logic: 'and',
+                        filters: [
+                            {codeDataTableFilters}
+                        ]
+                    }}
+                }},
+        ";
+        #endregion
+
+        #region DataTable Columns
+        StringBuilder codeDatatableColumns = new StringBuilder();
+
+        if (isThereReportDto)
+        {
+            foreach (var dtoField in reportDto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
+            {
+                if(dtoField.SourceField.FieldTypeId == (byte)FieldTypeEnums.DateTime)
+                {
+                    datatableColumns.Append($@"
+                    {{
+                        data: '{dtoField.Name}',
+                        render: function (data) {{
+                            if(data == null) return '';
+                            return moment(data).format('DD.MM.YYYY HH:mm');
+                        }}
+                    }},");
+                }
+                else if(dtoField.SourceField.FieldTypeId == (byte)FieldTypeEnums.Bool)
+                {
+                    datatableColumns.Append($@"
+                    {{
+                        data: '{dtoField.Name}',
+                        render: function (data) {{
+                            if(data == true) return (`<span class=""badge rounded-pill bg-label-danger""><i class=""fa-solid fa-xmark""></i></span>`);
+                            else if(data == false) return (`<span class=""badge rounded-pill bg-label-success""><i class=""fa-solid fa-check""></i></span>`);
+                            else return ('');
+                        }}
+                    }},");
+                }
+                else{
+                    datatableColumns.AppendLine($"\t\t\t\t\t{{ data: '{dtoField.Name}' }},");
+                }
+            }
+        }
+        else
+        {
+            foreach (var field in fieldList.Where(f => f.IsUnique == false))
+            {
+                if (field.FieldTypeId == (byte)FieldTypeEnums.DateTime)
+                {
+                    datatableColumns.Append($@"
+                    {{
+                        data: '{field.Name}',
+                        render: function (data) {{
+                            if(data == null) return '';
+                            return moment(data).format('DD.MM.YYYY HH:mm');
+                        }}
+                    }},");
+                }
+                else if (field.FieldTypeId == (byte)FieldTypeEnums.Bool)
+                {
+                    datatableColumns.Append($@"
+                    {{
+                        data: '{field.Name}',
+                        render: function (data) {{
+                            if(data == true) return (`<span class=""badge rounded-pill bg-label-danger""><i class=""fa-solid fa-xmark""></i></span>`);
+                            else if(data == false) return (`<span class=""badge rounded-pill bg-label-success""><i class=""fa-solid fa-check""></i></span>`);
+                            else return ('');
+                        }}
+                    }},");
+                }
+                else
+                {
+                    datatableColumns.AppendLine($"\t\t\t\t\t{{ data: '{field.Name}' }},");
+                }
+            }
+        }
+
+        if (entity.Auditable)
+        {
+            datatableColumns.Append(@"
+                    {
+                        data: 'CreateDateUtc',
+                        render: function (data) {
+                            if(data == null) return '';
+                            return moment(data).format('DD.MM.YYYY HH:mm');
+                        }
+                    },
+                    {
+                        data: 'UpdateDateUtc',
+                        render: function (data) {
+                            if(data == null) return '';
+                            return moment(data).format('DD.MM.YYYY HH:mm');
+                        }
+                    },");
+        }
+        if (entity.SoftDeletable)
+        {
+            datatableColumns.Append(@"
+                    {
+                        data: 'isDeleted',
+                        render: function (data) {
+                            if(data == true) return (`<span class=""badge rounded-pill bg-label-danger""><i class=""fa-solid fa-xmark""></i></span>`);
+                            else if(data == false) return (`<span class=""badge rounded-pill bg-label-success""><i class=""fa-solid fa-check""></i></span>`);
+                            else return ('');
+                        }
+                    },
+                    {
+                        data: 'deletedDateUtc',
+                        render: function (data) {
+                            if(data == null) return '';
+                            return moment(data).format('DD.MM.YYYY HH:mm');
+                        }
+                    },");
+        }
+
+        // Action Button
+        string uniqueFieldParams = string.Join(", ", entity.Fields.Where(f => f.IsUnique).Select(d => $"\"{d.Name.ToCamelCase()}\": rowData.{d.Name.ToCamelCase()}"));
+        if (entity.SoftDeletable)
+        {
+            datatableColumns.Append($@"
+                    {{
+                        data: null,
+                        defaultContent: '',
+                        searchable: false,
+                        createdCell: function (td, cellData, rowData, row, col)
+                        {{
+                            let deleteHandleButton = rowData.isDeleted == true ?
+                                HelperService.UndoDeleteButtonTable({{ requestUrl: '{entity.Name}/UndoDelete', requestData: {{ {uniqueFieldParams} }}, pageTable: mainTable }}) :
+                                HelperService.DeleteButtonTable({{requestUrl: '{entity.Name}/Delete', requestData: {{ {uniqueFieldParams} }}, pageTable: mainTable }});
+
+                            DatatableManager.AppendRowButtons(td,
+                            [
+                                HelperService.UpdateButtonTable({{
+                                    title: 'Update {entity.Name} Informations',
+                                    formGetterUrl: '{entity.Name}/Update',
+                                    requestData: {{
+                                        {uniqueFieldParams}
+                                    }},
+                                    pageTable: mainTable
+                                }}),
+                                deleteHandleButton
+                            ]);
+                        }}
+                    }}");
+        }
+        else
+        {
+            datatableColumns.Append($@"
+                    {{
+                        data: null,
+                        defaultContent: '',
+                        searchable: false,
+                        createdCell: function (td, cellData, rowData, row, col)
+                        {{
+                            DatatableManager.AppendRowButtons(td,
+                            [
+                                HelperService.UpdateButtonTable({{
+                                    title: 'Update {entity.Name} Informations',
+                                    formGetterUrl: '{entity.Name}/Update',
+                                    requestData: {{
+                                        {uniqueFieldParams}
+                                    }},
+                                    pageTable: mainTable
+                                }}),
+                                HelperService.DeleteButtonTable({{
+                                    requestUrl: '{entity.Name}/Delete', 
+                                    requestData: {{ {uniqueFieldParams} }}, 
+                                    pageTable: mainTable 
+                                }})
+                            ]);
+                        }}
+                    }}");
+        }
+        #endregion
+
+        return $@"
+@using {_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}
+@model {entity.Name}ViewModel
+@{{
+    ViewData[""Title""] = ""{entity.Name.Pluralize()}"";
+}}
+
+@await Html.PartialAsync(""Partials/Toolbar"", new Breadcrum
+{{
+    BreadcrumbItems = new List<BreadcrumbItem>
+    {{
+        new BreadcrumbItem {{ Title = ""Home"", Path = Url.Action(""Index"", ""Home"") }},
+    }},
+    PageName = ViewData[""Title""]?.ToString() ?? ""Page""
+}})
+
+<link href=""~/metronic/plugins/custom/datatables/datatables.bundle.css"" rel=""stylesheet"" />
+
+<div class=""card card-flush"">
+    <div class=""card-header align-items-center py-5 gap-2 gap-md-5"">
+        <div class=""card-title"">
+            <div class=""menu menu-sub menu-sub-dropdown mt-2 w-75 w-lg-500px"" data-kt-menu=""true"">
+                <div class=""px-7 py-5"">
+                    <div class=""fs-5 text-gray-900 fw-bold"">Filter Options</div>
+                </div>
+                <div class=""separator border-gray-200""></div>
+                <div class=""px-7 py-5"">
+                    {codeFilterForm}
+                    <div class=""d-flex justify-content-end"">
+                        <button type=""reset"" class=""btn btn-sm btn-light btn-active-light-primary me-2"" data-kt-menu-dismiss=""true"">Reset</button>
+                        <button type=""button"" onclick=""InitilazeTable(this)"" class=""btn btn-sm btn-primary"" data-kt-menu-dismiss=""true"">Apply</button>
+                    </div>
+                </div>
+            </div>
+            <button class=""btn btn-sm btn-flex btn-light-dark fw-bold"" data-kt-menu-trigger=""click"" data-kt-menu-placement=""bottom-start"">
+                <i class=""ki-duotone ki-filter fs-6 text-muted me-1""><span class=""path1""></span><span class=""path2""></span></i>
+                Filter
+            </button>
+        </div>
+    </div>
+    <div class=""card-body p-4 pt-0"">
+        <table id=""main_table"" class=""table align-middle table-row-dashed fs-6 gy-5"">
+            <thead>
+                <tr class=""text-start text-gray-500 fw-bold fs-7 text-uppercase gs-0"">
+                    {tableHeaderColumns}
+                </tr>
+            </thead>
+            <tbody class=""fw-semibold text-gray-600"">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {{
+    <script src=""~/metronic/plugins/custom/datatables/datatables.bundle.js""></script>
+
+    <script>
+
+        let mainTable;
+
+        $(document).ready(function(){{
+            InitilazeTable();
+        }})
+
+        function InitilazeTable(btn) {{
+            mainTable = DatatableManager.Create({{
+                serverSide: true,
+                tableId: 'main_table',
+                path: 'User/DatatableServerSide',
+                method: 'Post',
+                buttonElement: btn,
+                {codeDatatableRequestData}
+                columns: [
+                    {codeDatatableColumns}
+                ],
+                customButtons:
+                [  
+                    {{
+                        text: '<span class=""dynamic-content""><i class=""fa-solid fa-file-circle-plus me-2""></i>Add New {entityName}</span>',
+                        className: 'btn btn-primary mx-2',
+                        action: (e_btn) =>
+                        {{
+                            HelperService.InsertModal({{
+                                title: 'Add New {entity.Name}',
+                                formGetterUrl: '{entity.Name}/Create',
+                                e_btn: e_btn.currentTarget,
+                                pageTable: mainTable
+                            }})
+                        }}
+                    }}
+                ]
+            }})
+        }}
+    </script>
+}}
+";
+    }
+    #endregion
+
+
+
     public string Generate_wwwroot(string solutionPath)
     {
         if (string.IsNullOrEmpty(_appSetting.Path)) return "Warning: Not Found Destionation Path to Generation wwwroot files";
@@ -197,1018 +1295,5 @@ public class SideMenuViewComponent : ViewComponent
         return "wwwroot generated";
     }
 
-    public string GenerateViewModels(string solutionPath)
-    {
-        var results = new List<string>();
 
-        RoslynWebUIViewModelGenerator roslynWebUIControllerGenerator = new RoslynWebUIViewModelGenerator(_appSetting);
-
-        var entities = _entityRepository.GetAll(f => f.Control == false);
-
-        foreach (var entity in entities)
-        {
-            string code_VMIndex = roslynWebUIControllerGenerator.GenerateViewModelIndex(entity);
-            string code_VMCreate = roslynWebUIControllerGenerator.GenerateViewModelCreate(entity);
-            string code_VMUpdate = roslynWebUIControllerGenerator.GenerateViewModelUpdate(entity);
-
-            string folderPath = Path.Combine(solutionPath, "WebUI", "Models", "ViewModels", $"{entity.Name}_");
-
-            results.Add(AddFile(folderPath, $"{entity.Name}ViewModel", code_VMIndex));
-            results.Add(AddFile(folderPath, $"{entity.Name}CreateViewModel", code_VMCreate));
-            results.Add(AddFile(folderPath, $"{entity.Name}UpdateViewModel", code_VMUpdate));
-        }
-
-        #region UI MenuItem
-        string code_MenuItem = @"namespace WebUI.Models.UI;
-
-public class MenuItem
-{
-    public string Title { get; set; } = ""Menu Item"";
-    public int Type { get; set; } // 0 = group, 1 = route
-    public string? Path { get; set; }
-    public string Icon { get; set; } = string.Empty;
-    public string GroupName { get; set; } = string.Empty;
-    public string? Description { get; set; }
-
-    public List<MenuItem>? SubMenuItems { get; set; }
-}";
-
-        string folderPathMenuItem = Path.Combine(solutionPath, "WebUI", "Models", "UI");
-        results.Add(AddFile(folderPathMenuItem, "MenuItem", code_MenuItem));
-        #endregion
-
-        return string.Join("\n", results);
-    }
-
-    public string GenerateControllers(string solutionPath)
-    {
-        var results = new List<string>();
-
-        string folderPath = Path.Combine(solutionPath, "WebUI", "Controllers");
-
-        RoslynWebUIControllerGenerator roslynWebUIControllerGenerator = new RoslynWebUIControllerGenerator(_appSetting);
-
-        var entities = _entityRepository.GetAll(f => f.Control == false, include: i => i.Include(x => x.Fields));
-
-        foreach (var entity in entities)
-        {
-            var dtos = _dtoRepository.GetAll(
-                filter: f => f.RelatedEntityId == entity.Id,
-                include: i => i
-                    .Include(x => x.DtoFields).ThenInclude(x => x.SourceField)
-                    .Include(x => x.RelatedEntity).ThenInclude(ti => ti.Fields));
-
-            string code_controller = roslynWebUIControllerGenerator.GeneraterController(entity, dtos);
-
-            results.Add(AddFile(folderPath, $"{entity.Name}Controller", code_controller));
-        }
-
-        // Accout Controller
-        if (_appSetting.IsThereIdentity)
-        {
-            string code_AccountController = @"using Business.Abstract;
-using Core.Utils.ExceptionHandle.Exceptions;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Mvc;
-using Model.Auth.Login;
-using Model.Auth.SignUp;
-using WebUI.Utils.ActionFilters;
-
-namespace WebUI.Controllers
-{
-    public class AccountController : Controller
-    {
-        private readonly IAuthService _authService;
-        public AccountController(IAuthService authService)
-        {
-            _authService = authService;
-        }
-
-
-        [HttpGet]
-        public IActionResult Login()
-        {
-            var model = new LoginRequest();
-            return View(model);
-        }
-
-        [HttpPost]
-        [ServiceFilter(typeof(ValidationFilter<LoginRequest>))]
-        public async Task<IActionResult> Login(LoginRequest loginRequest)
-        {
-            try
-            {
-                await _authService.LoginWebBaseAsync(loginRequest);
-
-                return RedirectToAction(""Index"", ""Home"");
-            }
-            catch (Exception ex)
-            {
-                Type exType = ex.GetType();
-                if (exType == typeof(BusinessException))
-                {
-                    ModelState.AddModelError(string.Empty, ex.Message);
-                }
-                else
-                {
-                    ModelState.AddModelError(string.Empty, ""İşlem Sırasında Bir Sorun Oluştu. Lütfen Daha Sonra Tekrar Deneyiniz!"");
-                }
-                return View(loginRequest);
-            }
-        }
-
-        [HttpGet]
-        public IActionResult SignUp()
-        {
-            return View();
-        }
-
-        [HttpPost]
-        [ServiceFilter(typeof(ValidationFilter<SignUpRequest>))]
-        public async Task<IActionResult> SignUp(SignUpRequest signUpRequest)
-        {
-            try
-            {
-                await _authService.SignUpWebBaseAsync(signUpRequest);
-
-                return RedirectToAction(""Index"", ""Home"");
-            }
-            catch (Exception ex)
-            {
-                Type exType = ex.GetType();
-                if (exType == typeof(BusinessException))
-                {
-                    ModelState.AddModelError(string.Empty, ex.Message);
-                }
-                else
-                {
-                    ModelState.AddModelError(string.Empty, ""İşlem Sırasında Bir Sorun Oluştu. Lütfen Daha Sonra Tekrar Deneyiniz!"");
-                }
-                return View();
-            }
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> LogOut()
-        {
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            return RedirectToAction(""Login"", ""Account"");
-        }
-    }
-}";
-
-            results.Add(AddFile(folderPath, "AccountController", code_AccountController));
-        }
-
-        // Error Controller
-        string code_ErrorController = @"using Microsoft.AspNetCore.Mvc;
-
-namespace WebUI.Controllers
-{
-    public class ErrorController : Controller
-    {
-        public IActionResult Forbidden()
-        {
-            return View();
-        }
-
-        public IActionResult InternalServer()
-        {
-            return View();
-        }
-
-        public IActionResult InvalidProcess()
-        {
-            return View();
-        }
-
-        public new IActionResult NotFound()
-        {
-            return View();
-        }
-    }
-}";
-        results.Add(AddFile(folderPath, "ErrorController", code_ErrorController));
-
-        // UI Controller
-        string code_UIController = @"using Microsoft.AspNetCore.Mvc;
-using WebUI.Utils.Extensions;
-
-namespace WebUI.Controllers;
-
-public class UIController : Controller
-{
-    public IActionResult SetLightMode(string mode, string? returnUrl)
-    {
-        HttpContext.SetLightMode(mode);
-
-        if (string.IsNullOrEmpty(returnUrl)) return RedirectToAction(""Index"", ""Home"");
-
-        var uri = new Uri(returnUrl);
-        if (uri.Host != Request.Host.Host) return RedirectToAction(""Index"", ""Home"");
-
-        if (Request.Path.HasValue && (uri.LocalPath == Request.Path.Value)) return RedirectToAction(""Index"", ""Home"");
-
-        return Redirect(returnUrl);
-    }
-}";
-        results.Add(AddFile(folderPath, "UIController", code_UIController));
-
-        return string.Join("\n", results);
-    }
- 
-      
-    public string GenerateViews(string solutionPath)
-    {
-        var results = new List<string>();
-
-        string folderPath = Path.Combine(solutionPath, "WebUI", "Views");
-
-        ViewGenerator viewGenerator = new ViewGenerator(_appSetting);
-
-        var entities = _entityRepository.GetAll(f => f.Control == false, include: i => i.Include(x => x.Fields));
-
-        foreach (var entity in entities)
-        {
-            string code_indexPage = viewGenerator.GenerateIndexPage(entity);
-            string code_createPage = viewGenerator.GenerateCreatePage(entity);
-            string code_createFormPage = viewGenerator.GenerateCreateFormPage(entity);
-            string code_updateFormPage = viewGenerator.GenerateUpdateFormPage(entity);
-
-            string viewFolderPath = Path.Combine(solutionPath, "WebUI", "Views", entity.Name);
-            string viewPartialFolderPath = Path.Combine(solutionPath, "WebUI", "Views", entity.Name, "Partials");
-
-            results.Add(AddFileByExt(viewFolderPath, $"Index.cshtml", code_indexPage));
-            results.Add(AddFileByExt(viewFolderPath, $"Create.cshtml", code_createPage));
-
-            results.Add(AddFileByExt(viewPartialFolderPath, $"CreateForm.cshtml", code_createFormPage));
-            results.Add(AddFileByExt(viewPartialFolderPath, $"UpdateForm.cshtml", code_updateFormPage));
-        }
-
-        #region Account Views
-        if (_appSetting.IsThereIdentity)
-        {
-            string code_Login = @"@using Model.Auth.Login
-@model LoginRequest
-@{
-    Layout = ""_LayoutBase"";
-    ViewData[""Title""] = ""Login"";
-}
-
-<div class=""row justify-content-center"">
-    <div class=""col-lg-4 mt-12"">
-        <div class=""card"">
-            <div class=""card-header border-bottom mb-6"">
-                <div class=""app-brand justify-content-center"">
-                    <a asp-controller=""Home"" asp-action=""Index"" class=""d-flex gap-2"">
-                        <h4 class=""text-primary m-0"">
-                            Login
-                        </h4>
-                    </a>
-                </div>
-            </div>
-            <div class=""card-body"">
-                <form asp-controller=""Account"" asp-action=""Login"" method=""post"" class=""mb-6"">
-
-                    <div class=""mb-6"">
-                        <label asp-for=""Email"" class=""form-label"">Email</label>
-                        <input asp-for=""Email"" class=""form-control"" autofocus />
-                        <span asp-validation-for=""Email""></span>
-                    </div>
-                    <div class=""mb-6"">
-                        <label asp-for=""Password"" class=""form-label"">Password</label>
-                        <div class=""input-group"">
-                            <input asp-for=""Password"" class=""form-control"" placeholder=""&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"" />
-                            <span asp-validation-for=""Password""></span>
-                        </div>
-                    </div>
-                    <div class=""mb-8"">
-                        <div class=""d-flex justify-content-between"">
-                            <div class=""form-check mb-0"">
-                                <input class=""form-check-input"" type=""checkbox"" id=""remember-me"" />
-                                <label class=""form-check-label"" for=""remember-me""> Remember Me </label>
-                            </div>
-                            <a asp-controller=""Error"" asp-action=""NotFound"">
-                                <span>Forgot Password?</span>
-                            </a>
-                        </div>
-                    </div>
-                    <div asp-validation-summary=""All"" class=""text-danger mb-3""></div>
-                    <div class=""mb-6"">
-                        <button type=""submit"" class=""btn btn-primary d-grid w-100"">Login</button>
-                    </div>
-                </form>
-                <p class=""text-center"">
-                    <span>New on our platform?</span>
-                    <a asp-controller=""Account"" asp-action=""SignUp"">
-                        <span>Create an account</span>
-                    </a>
-                </p>
-            </div>
-        </div>
-    </div>
-</div>";
-
-            string code_Signup = @"@using Model.Auth.SignUp
-@model SignUpRequest
-@{
-    Layout = ""_LayoutBase"";
-    ViewData[""Title""] = ""SignUp"";
-}
-
-<div class=""row justify-content-center"">
-    <div class=""col-lg-4 mt-12"">
-        <div class=""card"">
-            <div class=""card-header border-bottom mb-6"">
-                <div class=""app-brand justify-content-center"">
-                    <a asp-controller=""Home"" asp-action=""Index"" class=""d-flex gap-2"">
-                        <h4 class=""text-primary m-0"">
-                            Create New Account
-                        </h4>
-                    </a>
-                </div>
-            </div>
-            <div class=""card-body"">
-                <form asp-controller=""Account"" asp-action=""SignUp"" method=""post"" class=""mb-6"">
-                    <div class=""mb-6"">
-                        <label asp-for=""Email"" class=""form-label"">Email</label>
-                        <input asp-for=""Email"" class=""form-control"" autofocus />
-                        <span asp-validation-for=""Email""></span>
-                    </div>
-                    <div>
-                        <label asp-for=""Password"" class=""form-label"">Password</label>
-                        <div class=""input-group"">
-                            <input asp-for=""Password"" type=""password"" class=""form-control"" placeholder=""&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;&#xb7;"" /> 
-                            <span asp-validation-for=""Password""></span>
-                        </div>
-                    </div>
-                    <div class=""my-7"">
-                        <div class=""form-check mb-0"">
-                            <input class=""form-check-input"" type=""checkbox"" id=""terms-conditions"" name=""terms"" />
-                            <label class=""form-check-label"" for=""terms-conditions"">
-                                I agree to
-                                <a href=""javascript:void(0);"">privacy policy & terms</a>
-                            </label>
-                        </div>
-                    </div>
-                    <button type=""submit"" class=""btn btn-primary d-grid w-100"">Sign up</button>
-                </form>
-
-                <p class=""text-center"">
-                    <span>Already have an account?</span>
-                    <a asp-controller=""Account"" asp-action=""Login"">
-                        <span>Login instead</span>
-                    </a>
-                </p>
-            </div>
-        </div>
-    </div>
-</div>";
-
-            if (_appSetting.IsThereUser && _appSetting.UserEntityId != default)
-            {
-                Entity? userEntity = entities.FirstOrDefault(f => f.Id == _appSetting.UserEntityId);
-
-                if (userEntity != default)
-                { 
-                    code_Signup = viewGenerator.GenerateSignUpPage(userEntity);
-                }
-            }
-
-            string accountViewsPath = Path.Combine(solutionPath, "WebUI", "Views", "Account");
-            results.Add(AddFileByExt(accountViewsPath, "Login.cshtml", code_Login));
-            results.Add(AddFileByExt(accountViewsPath, "SignUp.cshtml", code_Signup));
-        } 
-        #endregion
-
-
-        #region Error Views
-        string code_Forbidden = @"@{
-    ViewData[""Title""] = ""Forbiden Error"";
-    Layout = ""_LayoutBase"";
-}
-
-<div class=""misc-wrapper"">
-    <h1 class=""mb-2 mx-2"" style=""line-height: 6rem;font-size: 6rem;"">401</h1>
-    <h4 class=""mb-2 mx-2"">You are not authorized! 🔐</h4>
-    <p class=""mb-6 mx-2"">You don’t have permission to access this page. Go Home!</p>
-    <a href=""index.html"" class=""btn btn-primary"">Back to home</a>
-    <div class=""mt-6"">
-        <img src=""~/assets/img/illustrations/girl-with-laptop-light.png"" alt=""page-misc-not-authorized-light"" width=""500"" class=""img-fluid"" >
-    </div>
-</div>";
-        string code_InternalServer = @"@{
-    ViewData[""Title""] = ""Server Error"";
-    Layout = ""_LayoutBase"";
-}
-
-<div class=""container-xxl container-p-y"">
-    <div class=""misc-wrapper"">
-        <h1 class=""mb-2 mx-2"" style=""line-height: 6rem;font-size: 6rem;"">500</h1>
-        <h4 class=""mb-2 mx-2"">Internal Servver Error ⚠️</h4>
-        <p class=""mb-6 mx-2"">we couldn't handle the process you are doing for</p>
-        <a href=""/"" class=""btn btn-primary"">Back to home</a>
-        <div class=""mt-6"">
-            <img src=""~/assets/img/illustrations/girl-doing-yoga-light.png"" alt=""page-misc-error-light"" width=""500"" class=""img-fluid"">
-        </div>
-    </div>
-</div>";
-        string code_InvalidProcess = @"@{
-    ViewData[""Title""] = ""Invalid Process"";
-    Layout = ""_LayoutBase"";
-}
-
-<div class=""container-xxl container-p-y"">
-    <div class=""misc-wrapper"">
-        <h1 class=""mb-2 mx-2"" style=""line-height: 6rem;font-size: 6rem;"">500</h1>
-        <h4 class=""mb-2 mx-2"">Invalid Process Error ⚠️</h4>
-        <p class=""mb-6 mx-2"">İşlem Sırasında Bir Sorun Oluştu</p>
-        <a href=""/"" class=""btn btn-primary"">Back to home</a>
-        <div class=""mt-6"">
-            <img src=""~/assets/img/illustrations/girl-doing-yoga-light.png"" alt=""page-misc-error-light"" width=""500"" class=""img-fluid"">
-        </div>
-    </div>
-</div>";
-        string code_NotFound = @"@{
-    ViewData[""Title""] = ""Not Found"";
-    Layout = ""_LayoutBase"";
-}
-<div class=""container-xxl container-p-y"">
-    <div class=""misc-wrapper"">
-        <h1 class=""mb-2 mx-2"" style=""line-height: 6rem;font-size: 6rem;"">404</h1>
-        <h4 class=""mb-2 mx-2"">Page Not Found️ ⚠️</h4>
-        <p class=""mb-6 mx-2"">we couldn't find the page you are looking for</p>
-        <a href=""/"" class=""btn btn-primary"">Back to home</a>
-        <div class=""mt-6"">
-            <img src=""~/assets/img/illustrations/page-misc-error-light.png"" alt=""page-misc-error-light"" width=""500"" class=""img-fluid"">
-        </div>
-    </div>
-</div>";
-
-        string errorViewsPath = Path.Combine(solutionPath, "WebUI", "Views", "Error");
-        results.Add(AddFileByExt(errorViewsPath, "Forbidden.cshtml", code_Forbidden));
-        results.Add(AddFileByExt(errorViewsPath, "InternalServer.cshtml", code_InternalServer));
-        results.Add(AddFileByExt(errorViewsPath, "InvalidProcess.cshtml", code_InvalidProcess));
-        results.Add(AddFileByExt(errorViewsPath, "NotFound.cshtml", code_NotFound));
-        #endregion
-         
-        #region Layout 
-        string code_Layout = @"@{
-    var currentUrl = Context.GetUrl();
-    var lightMode = Context.GetLightMode();
-}
-<!DOCTYPE html>
-<html class=""@(lightMode == ""dark"" ? ""dark-style"" : ""light-style"") layout-menu-fixed layout-menu-expanded overflow-x-hidden""
-      dir=""ltr""
-      data-theme=""theme-default""
-      data-style=""light""
-      lang=""en"">
-<head>
-    <meta charset=""utf-8"" />
-    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
-    <title>@ViewData[""Title""] - MyApp</title>
-    <link rel=""icon"" type=""image/x-icon"" href=""~/assets/img/favicon/favicon.ico"" />
-
-    <partial name=""_LayoutHeader"" />
-</head>
-<body>
-    <!-- Layout wrapper -->
-    <div class=""layout-wrapper layout-content-navbar"">
-        <div class=""layout-container"">
-
-            @await Component.InvokeAsync(""SideMenu"")
-
-            <!-- Layout container -->
-            <div class=""layout-page"">
-
-                <!-- Navbar -->
-                <nav class=""layout-navbar container-xxl navbar navbar-expand-xl navbar-detached align-items-center bg-navbar-theme"" id=""layout-navbar"">
-                    <div class=""layout-menu-toggle navbar-nav align-items-xl-center me-3 me-xl-0 d-xl-none"">
-                        <a class=""nav-item nav-link px-0 me-xl-4"" href=""javascript:void(0)"">
-                            <i class=""fa-solid fa-bars""></i>
-                        </a>
-                    </div>
-
-                    <div class=""navbar-nav-right d-flex align-items-center"" id=""navbar-collapse"">
-                        <!-- Search -->
-                        <div class=""navbar-nav align-items-center"">
-                            <div class=""nav-item d-flex align-items-center"">
-                                <i class=""bx bx-search fs-4 lh-0""></i>
-                                <input type=""text"" class=""form-control border-0 shadow-none"" placeholder=""Search...""
-                                       aria-label=""Search..."" />
-                            </div>
-                        </div>
-                        <!-- /Search -->
-
-                        <ul class=""navbar-nav flex-row align-items-center ms-auto"">
-
-                            <!-- Light Mode -->
-                            <li class=""nav-item dropdown-style-switcher dropdown me-2 me-xl-0"">
-                                <a class=""nav-link dropdown-toggle hide-arrow"" href=""javascript:void(0);"" data-bs-toggle=""dropdown"">
-                                    <i class=""fa-solid fa-sun fa-xl text-warning""></i>
-                                </a>
-                                <ul class=""dropdown-menu dropdown-menu-end dropdown-styles"">
-                                    <li>
-                                        <a class=""dropdown-item  "" asp-controller=""UI"" asp-action=""SetLightMode"" asp-route-mode=""light""
-                                           asp-route-returnUrl=""@currentUrl"">
-                                            <span><i class=""fa-solid fa-lightbulb fa-lg me-4""></i> Light</span>
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class=""dropdown-item "" asp-controller=""UI"" asp-action=""SetLightMode"" asp-route-mode=""dark""
-                                           asp-route-returnUrl=""@currentUrl"">
-                                            <span><i class=""fa-solid fa-moon fa-lg me-4""></i> Dark</span>
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class=""dropdown-item "" asp-controller=""UI"" asp-action=""SetLightMode"" asp-route-mode=""system""
-                                           asp-route-returnUrl=""@currentUrl"">
-                                            <span><i class=""fa-solid fa-display me-2 fa-lg me-3""></i> System</span>
-                                        </a>
-                                    </li>
-                                </ul>
-                            </li>
-
-                            <!-- ShortCuts -->
-                            <li class=""nav-item dropdown-shortcuts navbar-dropdown dropdown me-2 me-xl-0"">
-                                <a class=""nav-link dropdown-toggle hide-arrow"" href=""javascript:void(0);"" data-bs-toggle=""dropdown""
-                                   data-bs-auto-close=""outside"" aria-expanded=""false"">
-                                    <i class='fa-brands fa-windows fa-xl'></i>
-                                </a>
-                                <div class=""dropdown-menu dropdown-menu-end p-0"">
-                                    <div class=""dropdown-menu-header border-bottom"">
-                                        <div class=""dropdown-header d-flex align-items-center py-3"">
-                                            <h6 class=""mb-0 me-auto"">Shortcuts</h6>
-                                            <span id=""dropdown-shortcuts-add"" class=""dropdown-shortcuts-add py-2"" data-bs-toggle=""tooltip"" role=""button""
-                                               data-bs-placement=""top"" title=""Add shortcuts""><i class=""bx bx-plus-circle text-heading""></i></span>
-                                        </div>
-                                    </div>
-                                    <div id=""dropdownshortcutslist"" class=""dropdown-shortcuts-list scrollable-container"">
-                                        <!-- ShortCuts Coming Here -->
-                                    </div>
-                                </div>
-                            </li>
-                            <!-- Quick links -->
-                            <!-- User -->
-                            <li class=""nav-item navbar-dropdown dropdown-user dropdown"">
-                                <a class=""nav-link dropdown-toggle hide-arrow"" href=""javascript:void(0);"" data-bs-toggle=""dropdown"">
-                                    <div class=""avatar avatar-online"">
-                                        <img src=""../assets/img/avatars/1.png"" alt class=""w-px-40 h-auto rounded-circle"" />
-                                    </div>
-                                </a>
-                                <ul class=""dropdown-menu dropdown-menu-end"">
-                                    <li>
-                                        <a class=""dropdown-item"" href=""#"">
-                                            <div class=""d-flex"">
-                                                <div class=""flex-shrink-0 me-3"">
-                                                    <div class=""avatar avatar-online"">
-                                                        <img src=""../assets/img/avatars/1.png"" alt class=""w-px-40 h-auto rounded-circle"" />
-                                                    </div>
-                                                </div>
-                                                <div class=""flex-grow-1"">
-                                                    <span class=""fw-semibold d-block"">John Doe</span>
-                                                    <small class=""text-muted"">Admin</small>
-                                                </div>
-                                            </div>
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <div class=""dropdown-divider""></div>
-                                    </li>
-                                    <li>
-                                        <a class=""dropdown-item"" href=""#"">
-                                            <i class=""bx bx-user me-2""></i>
-                                            <span class=""align-middle"">My Profile</span>
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class=""dropdown-item"" href=""#"">
-                                            <i class=""bx bx-cog me-2""></i>
-                                            <span class=""align-middle"">Settings</span>
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class=""dropdown-item"" href=""#"">
-                                            <span class=""d-flex align-items-center align-middle"">
-                                                <i class=""flex-shrink-0 bx bx-credit-card me-2""></i>
-                                                <span class=""flex-grow-1 align-middle"">Billing</span>
-                                                <span class=""flex-shrink-0 badge badge-center rounded-pill bg-danger w-px-20 h-px-20"">4</span>
-                                            </span>
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <div class=""dropdown-divider""></div>
-                                    </li>
-                                    <li>
-                                        <a asp-controller=""Account"" asp-action=""LogOut"" class=""dropdown-item"">
-                                            <i class=""bx bx-power-off me-2""></i>
-                                            <span class=""align-middle"">Log Out</span>
-                                        </a>
-                                    </li>
-                                </ul>
-                            </li>
-                            <!--/ User -->
-                        </ul>
-
-                    </div>
-                </nav>
-                <!-- / Navbar -->
-                <!-- Content wrapper -->
-                <div class=""content-wrapper"">
-                    <!-- Content -->
-
-                    <div class=""container-xxl flex-grow-1 container-p-y"">
-                        @RenderBody()
-                    </div>
-                    <!-- / Content -->
-                    <!-- Footer -->
-                    <footer class=""content-footer footer bg-light"">
-                        <div class=""container-fluid d-flex flex-md-row flex-column justify-content-between align-items-md-center gap-1 container-p-x py-4"">
-                            <div>
-                                <a href=""/"" target=""_blank"" class=""footer-brand fw-bold"">My App</a> ©
-                            </div>
-                            <div>
-                                <a href=""/"" class=""footer-link me-6"" target=""_blank"">License</a>
-                            </div>
-                        </div>
-                    </footer>
-                    <!-- / Footer -->
-
-                    <div class=""content-backdrop fade""></div>
-                </div>
-                <!-- Content wrapper -->
-            </div>
-            <!-- / Layout page -->
-        </div>
-
-        <!-- Overlay -->
-        <div class=""layout-overlay layout-menu-toggle""></div>
-    </div>
-    <partial name=""_LayoutScripts"" />
-
-    @await RenderSectionAsync(""Scripts"", required: false)
-</body>
-</html>
-";
-
-        string code_LayoutBase = @"@{
-    var currentUrl = Context.GetUrl();
-    var lightMode = Context.GetLightMode();
-}
-<!DOCTYPE html>
-<html class=""@(lightMode == ""light"" ? ""light-style"" : ""dark-style"") layout-menu-fixed layout-menu-expanded overflow-x-hidden""
-      dir=""ltr""
-      data-theme=""theme-default""
-      data-style=""light""
-      lang=""en"">
-<head>
-    <meta charset=""utf-8"" />
-    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
-    <title>@ViewData[""Title""]</title>
-    <link rel=""icon"" type=""image/x-icon"" href=""~/assets/img/favicon/favicon.ico"" />
-
-    <partial name=""_LayoutHeader"" />
-</head>
-<body>
-    <!-- Layout wrapper -->
-    <div class=""layout-wrapper layout-content-navbar"">
-        <div class=""layout-container""> 
-            <!-- Layout container --> 
-                <!-- Content wrapper -->
-                <div class=""content-wrapper"">
-                    <!-- Content -->
-
-                    <div class=""container-sm flex-grow-1 container-p-y"">
-                        @RenderBody()
-                    </div>
-                    <!-- / Content --> 
-                </div>
-                <!-- Content wrapper --> 
-            <!-- / Layout page -->
-        </div> 
-    </div>
-    <partial name=""_LayoutScripts"" />
-
-    @await RenderSectionAsync(""Scripts"", required: false)
-</body>
-</html>";
-
-        string code_LayoutHeader = @"
-@{
-    var lightMode = Context.GetLightMode();
-}
-
-<!-- LIBS -->
-<link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/boxicons/2.1.4/css/boxicons.min.css"" integrity=""sha512-cn16Qw8mzTBKpu08X0fwhTSv02kK/FojjNLz0bwp2xJ4H+yalwzXKFw/5cLzuBZCxGWIA+95X4skzvo8STNtSg=="" crossorigin=""anonymous"" referrerpolicy=""no-referrer"" />
-<link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css"" integrity=""sha512-DxV+EoADOkOygM4IR9yXP8Sb2qwgidEmeqAEmDKIOfPRQZOWbXCzLC6vjbZyy0vPisbH2SyW27+ddLVCN+OMzQ=="" crossorigin=""anonymous"" referrerpolicy=""no-referrer"" />
-<link rel=""stylesheet"" href=""~/lib/bootstrap/dist/css/bootstrap.min.css"" />
-<link rel=""stylesheet"" href=""~/lib/perfect-scrollbar/perfect-scrollbar.min.css"" />
-<link rel=""stylesheet"" href=""~/lib/apex-charts/apex-charts.css"" />
-<link rel=""stylesheet"" href=""~/lib/select2/select2.css"" />
-<link rel=""stylesheet"" href=""~/lib/tagify/tagify.css"" />
-<link rel=""stylesheet"" href=""~/lib/typeahead-js/typeahead.css"" />
-<link rel=""stylesheet"" href=""~/lib/bs-stepper/bs-stepper.css"" />
-<link rel=""stylesheet"" href=""~/lib/flatpickr/flatpickr.css"" />
-<link rel=""stylesheet"" href=""~/lib/pickr/pickr-themes.css"" />
-<link rel=""stylesheet"" href=""~/lib/jquery-timepicker/jquery-timepicker.css"" />
-<link rel=""stylesheet"" href=""~/lib/simple-notify/simple-notify.min.css"" />
-<link rel=""stylesheet"" href=""~/lib/pace/pace-theme-minimal.css"" />
-<link rel=""stylesheet"" href=""~/lib/bootstrap-daterangepicker/bootstrap-daterangepicker.css"" />
-<link rel=""stylesheet"" href=""~/lib/bootstrap-datepicker/bootstrap-datepicker.css"" />
-
-<link rel=""stylesheet"" href=""~/lib/datatables-bs5/datatables.bootstrap5.css"" />
-<link rel=""stylesheet"" href=""~/lib/datatables-buttons-bs5/buttons.bootstrap5.css"" />
-<link rel=""stylesheet"" href=""~/lib/datatables-responsive-bs5/responsive.bootstrap5.css"" />
-<!-- LIBS -->
-@if (lightMode == ""dark"")
-{
-    <link rel=""stylesheet"" href=""~/css/core-dark.css"" class=""template-customizer-core-css"" />
-    <link rel=""stylesheet"" href=""~/css/theme-default-dark.css"" class=""template-customizer-theme-css"" />
-}
-else
-{
-    <link rel=""stylesheet"" href=""~/css/core.css"" class=""template-customizer-core-css"" />
-    <link rel=""stylesheet"" href=""~/css/theme-default.css"" class=""template-customizer-theme-css"" />
-}
-<link rel=""stylesheet"" href=""~/css/site.css"" asp-append-version=""true"" />
-
-<script src=""~/js/config.js""></script>
-<script src=""~/js/helpers.js""></script>";
-
-        string code_LayoutScripts = @"
-<script src=""~/lib/jquery/dist/jquery.min.js""></script>
-<script src=""~/lib/jquery-validation/dist/jquery.validate.min.js""></script>
-<script src=""~/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js""></script>
-<script src=""~/lib/bootstrap/dist/js/bootstrap.bundle.min.js""></script>
-
-<!-- LIBS -->
-<script src=""https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/js/all.min.js"" integrity=""sha512-gBYquPLlR76UWqCwD06/xwal4so02RjIR0oyG1TIhSGwmBTRrIkQbaPehPF8iwuY9jFikDHMGEelt0DtY7jtvQ=="" crossorigin=""anonymous"" referrerpolicy=""no-referrer""></script>
-<script src=""~/lib/popper/popper.js""></script>
-<script src=""~/lib/perfect-scrollbar/perfect-scrollbar.min.js""></script>
-<script src=""~/lib/highlight/highlight.js""></script>
-<script src=""~/lib/clipboard/clipboard.js""></script>
-<script src=""~/lib/@@algolia/autocomplete-js.js""></script>
-<script src=""~/lib/hammer/hammer.js""></script>
-<script src=""~/lib/i18n/i18n.js""></script>
-<script src=""~/lib/bloodhound/bloodhound.js""></script>
-<script src=""~/lib/apex-charts/apexcharts.js""></script>
-<script src=""~/lib/select2/select2.js""></script>
-<script src=""~/lib/tagify/tagify.js""></script>
-<script src=""~/lib/typeahead-js/typeahead.js""></script>
-<script src=""~/lib/bs-stepper/bs-stepper.js""></script>
-<script src=""~/lib/bootstrap-select/bootstrap-select.js""></script>
-<script src=""~/lib/moment/moment.js""></script>
-<script src=""~/lib/flatpickr/flatpickr.js""></script>
-<script src=""~/lib/pickr/pickr.js""></script>
-<script src=""~/lib/bootstrap-daterangepicker/bootstrap-daterangepicker.js""></script>
-<script src=""~/lib/jquery-timepicker/jquery-timepicker.js""></script>
-<script src=""~/lib/simple-notify/simple-notify.min.js""></script>
-<script src=""~/lib/pace/pace.min.js""></script>
-
-<script src=""~/lib/bootstrap-datepicker-1.9.0/js/bootstrap-datepicker.min.js""></script>
-<script src=""~/lib/bootstrap-datepicker-1.9.0/locales/bootstrap-datepicker.tr.min.js""></script>
-<script src=""~/lib/datatables-bs5/datatables-bootstrap5.js""></script>
-<!-- LIBS -->
-
-<script src=""~/js/menu.js""></script>
-
-<script src=""~/js/utils/requestManager.js""></script>
-<script src=""~/js/utils/alertManager.js""></script>
-<script src=""~/js/utils/datatableManager.js""></script>
-<script src=""~/js/utils/modalManager.js""></script>
-<script src=""~/js/UIManager.js""></script>
-
-<script src=""~/js/main.js""></script>
-
-<script>
-	window.paceOptions = {
-		ajax: {
-			trackMethods: ['GET', 'POST', 'DELETE', 'PACH'],
-			ignoreURLs: [
-				""/heartbeat"",
-				""/keepalive"",
-				""signalr"",
-				""__browserLink"",
-				""browserLinkSignalR""
-			],
-			trackWebSockets: false,
-		},
-		document: true,
-		eventLag: false,
-		restartOnRequestAfter: false
-	};
-	// jquery pace.js handle
-	$(document).ajaxStart(function () { Pace.restart(); });
-
-	// fetch pace.js handle
-	const _fetch = window.fetch;
-	window.fetch = function (...args) {
-		Pace.restart();
-		return _fetch.apply(this, args);
-	};
-</script>";
-
-        string code_ViewImports = @"
-﻿@using WebUI
-@using WebUI.Models
-@using WebUI.Utils.Extensions
-@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers";
-
-        string viewsPath = Path.Combine(solutionPath, "WebUI", "Views");
-        string sharedViewsSharedPath = Path.Combine(solutionPath, "WebUI", "Views", "Shared");
-
-        results.Add(AddFileByExt(sharedViewsSharedPath, "_Layout.cshtml", code_Layout)); 
-        results.Add(AddFileByExt(sharedViewsSharedPath, "_LayoutBase.cshtml", code_LayoutBase)); 
-        results.Add(AddFileByExt(sharedViewsSharedPath, "_LayoutHeader.cshtml", code_LayoutHeader));
-        results.Add(AddFileByExt(sharedViewsSharedPath, "_LayoutScripts.cshtml", code_LayoutScripts));
-        results.Add(AddFileByExt(viewsPath, "_ViewImports.cshtml", code_ViewImports));
-        #endregion
-
-        #region SideMenu
-        string code_SideMenuDefault = @"@using WebUI.Models.UI
-@model List<MenuItem>
-@{
-	string _path_ = Context.GetPath();
-	string _basePath_ = Context.GetBasePath();
-} 
-
-
-<aside id=""layout-menu"" class=""layout-menu menu-vertical menu bg-menu-theme"">
-	<div class=""app-brand demo"">
-		<a href=""/"" class=""app-brand-link"">
-			<span id=""side_menu_logo"" class=""app-brand-logo demo"">
-				<svg width=""25""
-					 viewBox=""0 0 25 42""
-					 version=""1.1""
-					 xmlns=""http://www.w3.org/2000/svg""
-					 xmlns:xlink=""http://www.w3.org/1999/xlink"">
-					<defs>
-						<path d=""M13.7918663,0.358365126 L3.39788168,7.44174259 C0.566865006,9.69408886 -0.379795268,12.4788597 0.557900856,15.7960551 C0.68998853,16.2305145 1.09562888,17.7872135 3.12357076,19.2293357 C3.8146334,19.7207684 5.32369333,20.3834223 7.65075054,21.2172976 L7.59773219,21.2525164 L2.63468769,24.5493413 C0.445452254,26.3002124 0.0884951797,28.5083815 1.56381646,31.1738486 C2.83770406,32.8170431 5.20850219,33.2640127 7.09180128,32.5391577 C8.347334,32.0559211 11.4559176,30.0011079 16.4175519,26.3747182 C18.0338572,24.4997857 18.6973423,22.4544883 18.4080071,20.2388261 C17.963753,17.5346866 16.1776345,15.5799961 13.0496516,14.3747546 L10.9194936,13.4715819 L18.6192054,7.984237 L13.7918663,0.358365126 Z""
-							  id=""path-1""></path>
-						<path d=""M5.47320593,6.00457225 C4.05321814,8.216144 4.36334763,10.0722806 6.40359441,11.5729822 C8.61520715,12.571656 10.0999176,13.2171421 10.8577257,13.5094407 L15.5088241,14.433041 L18.6192054,7.984237 C15.5364148,3.11535317 13.9273018,0.573395879 13.7918663,0.358365126 C13.5790555,0.511491653 10.8061687,2.3935607 5.47320593,6.00457225 Z""
-							  id=""path-3""></path>
-						<path d=""M7.50063644,21.2294429 L12.3234468,23.3159332 C14.1688022,24.7579751 14.397098,26.4880487 13.008334,28.506154 C11.6195701,30.5242593 10.3099883,31.790241 9.07958868,32.3040991 C5.78142938,33.4346997 4.13234973,34 4.13234973,34 C4.13234973,34 2.75489982,33.0538207 2.37032616e-14,31.1614621 C-0.55822714,27.8186216 -0.55822714,26.0572515 -4.05231404e-15,25.8773518 C0.83734071,25.6075023 2.77988457,22.8248993 3.3049379,22.52991 C3.65497346,22.3332504 5.05353963,21.8997614 7.50063644,21.2294429 Z""
-							  id=""path-4""></path>
-						<path d=""M20.6,7.13333333 L25.6,13.8 C26.2627417,14.6836556 26.0836556,15.9372583 25.2,16.6 C24.8538077,16.8596443 24.4327404,17 24,17 L14,17 C12.8954305,17 12,16.1045695 12,15 C12,14.5672596 12.1403557,14.1461923 12.4,13.8 L17.4,7.13333333 C18.0627417,6.24967773 19.3163444,6.07059163 20.2,6.73333333 C20.3516113,6.84704183 20.4862915,6.981722 20.6,7.13333333 Z""
-							  id=""path-5""></path>
-					</defs>
-					<g id=""g-app-brand"" stroke=""none"" stroke-width=""1"" fill=""none"" fill-rule=""evenodd"">
-						<g id=""Brand-Logo"" transform=""translate(-27.000000, -15.000000)"">
-							<g id=""Icon"" transform=""translate(27.000000, 15.000000)"">
-								<g id=""Mask"" transform=""translate(0.000000, 8.000000)"">
-									<mask id=""mask-2"" fill=""white"">
-										<use xlink:href=""#path-1""></use>
-									</mask>
-									<use fill=""#248ef0"" xlink:href=""#path-1""></use>
-									<g id=""Path-3"" mask=""url(#mask-2)"">
-										<use fill=""#248ef0"" xlink:href=""#path-3""></use>
-										<use fill-opacity=""0.2"" fill=""#FFFFFF"" xlink:href=""#path-3""></use>
-									</g>
-									<g id=""Path-4"" mask=""url(#mask-2)"">
-										<use fill=""#248ef0"" xlink:href=""#path-4""></use>
-										<use fill-opacity=""0.2"" fill=""#FFFFFF"" xlink:href=""#path-4""></use>
-									</g>
-								</g>
-								<g id=""Triangle""
-								   transform=""translate(19.000000, 11.000000) rotate(-300.000000) translate(-19.000000, -11.000000) "">
-									<use fill=""#248ef0"" xlink:href=""#path-5""></use>
-									<use fill-opacity=""0.2"" fill=""#FFFFFF"" xlink:href=""#path-5""></use>
-								</g>
-							</g>
-						</g>
-					</g>
-				</svg>
-			</span>
-			<span class=""app-brand-text demo menu-text fw-bolder ms-2"">Sneat</span>
-		</a>
-
-		<span role=""button"" class=""layout-menu-toggle menu-link text-large ms-auto d-flex align-items-center justify-content-center"">
-			<i class=""bx bx-chevron-left bx-sm d-flex align-items-center justify-content-center""></i>
-		</span>
-	</div>
-
-	<hr />
-
-	<div class=""menu-inner-shadow""></div>
-
-	<ul class=""menu-inner py-1"">
-		<!-- Dashboard -->
-		@* <li class=""menu-item active"">
-		<a href=""index.html"" class=""menu-link"">
-		<i class=""menu-icon tf-icons bx bx-home-circle""></i>
-		<div data-i18n=""Analytics"">Dashboard</div>
-		</a>
-		</li> *@
-
-		@foreach (var item in Model)
-		{
-			if (!string.IsNullOrEmpty(item.GroupName))
-			{
-				<li class=""menu-header small text-uppercase"">
-					<span class=""menu-header-text"">
-						@item.GroupName
-					</span>
-				</li>
-			}
-
-			bool isThereSubs = false;
-			bool isActive = false;
-			if (item.Type == 0)
-			{
-				isThereSubs = item.SubMenuItems != null && item.SubMenuItems.Any();
-				isActive = isThereSubs && item.SubMenuItems!.Any(f => f.Path == _basePath_);
-
-				<li class=""menu-item @(isActive ? ""active open"" : string.Empty)"">
-					<span role=""button"" class=""menu-link @(isActive ? ""active"" : string.Empty) @(isThereSubs ? ""menu-toggle"" : string.Empty)"" data-icon=""@item.Icon"">
-						<i class=""menu-icon @item.Icon""></i>
-						<div class=""page-name"">@item.Title</div>
-					</span>
-					@if (isThereSubs)
-					{
-						<partial name=""./_subMenu.cshtml"" model=""@item.SubMenuItems"" />
-					}
-				</li>
-			}
-			else if (item.Type == 1)
-			{
-				isActive = item.Path == _basePath_;
-
-				<li class=""menu-item @(isActive ? ""active open"" : string.Empty)"">
-					<a href=""@item.Path"" class=""menu-link @(isActive ? ""active"" : string.Empty) @(isThereSubs ? ""menu-toggle"" : string.Empty)"" data-icon=""@item.Icon"">
-						<i class=""menu-icon @item.Icon""></i>
-						<div class=""page-name"">@item.Title</div>
-					</a>
-					@if (isThereSubs)
-					{
-						<partial name=""./_subMenu.cshtml"" model=""@item.SubMenuItems"" />
-					}
-				</li>
-			}
-		}
-	</ul>
-</aside>";
-        
-        string code_SideMenuSubMenu = @"@using WebUI.Models.UI
-@model List<MenuItem>
-@{
-	string _path_ = Context.GetPath();
-	string _basePath_ = Context.GetBasePath();
-}
-
-<ul class=""menu-sub"">
-	@foreach (var item in Model)
-	{
-		if (!string.IsNullOrEmpty(item.GroupName))
-		{
-			<li class=""menu-header small text-uppercase"">
-				<span class=""menu-header-text"">
-					@item.GroupName
-				</span>
-			</li>
-		}
-
-		bool isThereSubs = false;
-		bool isActive = false;
-		if (item.Type == 0)
-		{
-			isThereSubs = item.SubMenuItems != null && item.SubMenuItems.Any();
-			isActive = isThereSubs && item.SubMenuItems!.Any(f => f.Path == _basePath_);
-
-			<li class=""menu-item @(isActive ? ""active open"" : string.Empty)"">
-				<span role=""button"" class=""menu-link @(isActive ? ""active"" : string.Empty) @(isThereSubs ? ""menu-toggle"" : string.Empty)"" data-icon=""@item.Icon"">
-					<i class=""menu-icon @item.Icon""></i>
-					<div class=""page-name"">@item.Title</div>
-				</span>
-				@if (isThereSubs)
-				{
-					<partial name=""./_subMenu.cshtml"" model=""@item.SubMenuItems"" />
-				}
-			</li>
-		}
-		else if (item.Type == 1)
-		{
-			isActive = item.Path == _basePath_;
-
-			<li class=""menu-item @(isActive ? ""active open"" : string.Empty)"">
-				<a href=""@item.Path"" class=""menu-link @(isActive ? ""active"" : string.Empty) @(isThereSubs ? ""menu-toggle"" : string.Empty)"" data-icon=""@item.Icon"">
-					<i class=""menu-icon @item.Icon""></i>
-					<div class=""page-name"">@item.Title</div>
-				</a>
-				@if (isThereSubs)
-				{
-					<partial name=""./_subMenu.cshtml"" model=""@item.SubMenuItems"" />
-				}
-			</li>
-		}
-	}
-</ul>";
-
-        string sideMenuViewsPath = Path.Combine(solutionPath, "WebUI", "Views", "Shared", "Components", "SideMenu");
-        results.Add(AddFileByExt(sideMenuViewsPath, "Default.cshtml", code_SideMenuDefault));
-        results.Add(AddFileByExt(sideMenuViewsPath, "_subMenu.cshtml", code_SideMenuSubMenu));
-        #endregion
-
-        return string.Join("\n", results);
-    } 
 }

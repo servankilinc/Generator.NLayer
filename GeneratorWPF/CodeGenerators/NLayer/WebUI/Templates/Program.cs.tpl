@@ -4,12 +4,13 @@ using Microsoft.Extensions.Options;
 using System.Threading.RateLimiting;
 using FluentValidation.AspNetCore;
 using FluentValidation;
-using BlogApp.Core;
-using BlogApp.Core.Utils.Auth;
-using BlogApp.DataAccess.Contexts;
-using BlogApp.Model.Entities;
-using BlogApp.Business;
-using BlogApp.WebUI.ExceptionHandler;
+using {{ core_project_name }};
+using {{ core_project_name }}.Utils.Auth;
+using {{ model_project_name }}.Entities;
+using {{ dataAccess_project_name }}.Contexts;
+using {{ dataAccess_project_name }};
+using {{ business_project_name }};
+using {{ webui_project_name }}.ExceptionHandler;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -56,10 +57,13 @@ builder.Services.AddRateLimiter(options =>
 
 #region ------- Layer Registrations -------
 builder.Services.AddCoreServices(builder);
+builder.Services.AddDataAccessServices(builder.Configuration);
 builder.Services.AddBusinessServices(builder.Configuration);
 #endregion
 
+
 {{ identity_web_ui_registration_code }}
+
 
 #region ------- Cookie Options -------
 builder.Services.ConfigureApplicationCookie(options =>

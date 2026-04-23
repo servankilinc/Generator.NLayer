@@ -24,7 +24,7 @@ namespace GeneratorWPF.Extensions
                 return input;
 
 
-            if (input.Length < 2)
+            if (input.Length <= 2)
                 return input.ToLowerInvariant();
 
             if (input.Trim().ToLowerInvariant().EndsWith("id"))

@@ -1,5 +1,7 @@
-﻿using GeneratorWPF.Models.Enums;
+﻿using GeneratorWPF.Extensions;
+using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Models.Signature;
+using Humanizer;
 using System.Linq;
 
 namespace GeneratorWPF.Models
@@ -89,46 +91,107 @@ namespace GeneratorWPF.Models
 
         /// <summary>
         /// 1: Select
+        /// 2: Equals
+        /// 3: Contains
+        /// 4: CheckBox
+        /// </summary>
+        /// <returns></returns>
+        public int GetInputKind(int typeId)
+        {
+            if (typeId == 1)
+            {
+                return 1;
+            }
+            else if (typeId == 2 || typeId == 5 || typeId == 6)
+            {
+                return 2;
+            }
+            else if (typeId == 3)
+            {
+                return 3;
+            }
+            else if (typeId == 4)
+            {
+                return 4;
+            }
+
+            return 0;
+        }
+
+
+        /// <summary>
+        /// 1: Select
         /// 2: Number
         /// 3: Text
         /// 4: CheckBox
         /// 5: DateTime
-        /// 6: Undefined
+        /// 6: Time
         /// </summary>
         /// <returns></returns>
-        public int GetVariableGroup() // key: fieldName, value: entityName
+        public string CreateInputHTML(int typeId, string? parrentHtmlId = null)
         {
-            if (this.FieldTypeId == (byte)FieldTypeEnums.Int || this.FieldTypeId == (byte)FieldTypeEnums.Guid)
+            if (typeId == 1)
             {
-                return 1;
+                return $@"
+                    <div class=""mb-10"">
+                        <label class=""form-label fw-semibold"" for=""slct_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
+                        <select id=""slct_{this.Name.ToCamelCase()}"" class=""autoInitSelect2 form-select form-select-sm form-select-solid"" name=""{this.Name}"" asp-items=""Model.{this.Name.Pluralize()}"" data-control=""select2"" data-dropdown-parent=""#{parrentHtmlId}"" data-allow-clear=""true"">
+                            <option></option>
+                        </select>
+                    </div>
+                ";
             }
-            else if (
-                this.FieldTypeId == (byte)FieldTypeEnums.Int ||
-                this.FieldTypeId == (byte)FieldTypeEnums.Double ||
-                this.FieldTypeId == (byte)FieldTypeEnums.Float ||
-                this.FieldTypeId == (byte)FieldTypeEnums.Byte ||
-                this.FieldTypeId == (byte)FieldTypeEnums.Long)
+            else if (typeId == 2)
             {
-                return 2;
+                return $@"
+                    <div class=""mb-10"">
+                        <label class=""form-label fw-semibold"" for=""inpt_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
+                        <input id=""inpt_{this.Name.ToCamelCase()}"" class=""form-control form-control-sm form-control-solid"" name=""{this.Name}"" type=""number""/>
+                    </div>
+                ";
             }
-            else if (this.FieldTypeId == (byte)FieldTypeEnums.String || this.FieldTypeId == (byte)FieldTypeEnums.Char)
+            else if (typeId == 3)
             {
-                return 3;
+                return $@"
+                    <div class=""mb-10"">
+                        <label class=""form-label fw-semibold"" for=""inpt_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
+                        <input id=""inpt_{this.Name.ToCamelCase()}"" class=""form-control form-control-sm form-control-solid"" name=""{this.Name}"" type=""text""/>
+                    </div>
+                ";
             }
-            else if (this.FieldTypeId == (byte)FieldTypeEnums.Bool)
+            else if (typeId == 4)
             {
-                return 4;
+                return $@"
+                    <div class=""mb-10 form-check"">
+                        <input id=""chckb_{this.Name.ToCamelCase()}"" class=""form-check-input"" name=""{this.Name}"" type=""checkbox"" value=""""/>
+                        <label class=""form-check-label fw-semibold"" for=""chckb_{this.Name.ToCamelCase()}"">
+                            {this.Name.DivideToLabelName()}
+                        </label>
+                    </div>
+                ";
             }
-            else if (this.FieldTypeId == (byte)FieldTypeEnums.DateOnly || this.FieldTypeId == (byte)FieldTypeEnums.DateTime)
+            else if (typeId == 5)
             {
-                return 5;
+                return $@"
+                    <div class=""mb-10"">
+                        <label class=""form-label fw-semibold"" for=""dtpick_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
+                        <input id=""dtpick_{this.Name.ToCamelCase()}"" class=""autoInitFlatPicker form-control form-control-sm form-control-solid"" name=""{this.Name}""/>
+                    </div>
+                ";
             }
-            else if (this.FieldTypeId == (byte)FieldTypeEnums.TimeSpan || this.FieldTypeId == (byte)FieldTypeEnums.TimeOnly)
+            else if (typeId == 6)
             {
-                return 6;
+                return $@"
+                    <div class=""mb-10"">
+                        <label class=""form-label fw-semibold"" for=""timepick_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
+                        <input id=""timepick_{this.Name.ToCamelCase()}"" class=""autoInitFlatPickerOnlyTime form-control form-control-sm form-control-solid"" name=""{this.Name}""/>
+                    </div>
+                ";
             }
-
-            return 0;
+            else
+            {
+                return string.Empty;
+            }
         }
     }
 }
