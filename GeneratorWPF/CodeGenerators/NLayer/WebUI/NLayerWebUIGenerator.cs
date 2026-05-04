@@ -36,9 +36,9 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
             if (Directory.Exists(layerPath) && File.Exists(csprojPath))
                 return "INFO: WebUI layer project already exists.";
-             
 
-            RunCommand(_appSetting.SolutionPath, "dotnet", $"new mvc -n WebUI");
+
+            RunCommand(_appSetting.SolutionPath, "dotnet", $"new mvc -n {_appSetting.WebUILayerProjectName}");
 
             bool isSlnx = File.Exists(Path.Combine(_appSetting.SolutionPath, $"{_appSetting.SolutionName}.slnx"));
 
@@ -47,14 +47,15 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
             RemoveFile(layerPath, "Program.cs");
             RemoveFile(layerPath, "appsettings.json");
-            
+
             string projectViewsPath = Path.Combine(layerPath, "Views");
             RemoveFile(projectViewsPath, "_ViewImports.cshtml");
-            
-            string projectViewsSharedPath = Path.Combine(layerPath, "Views", "Shared"); 
+
+            string projectViewsSharedPath = Path.Combine(layerPath, "Views", "Shared");
             RemoveFile(projectViewsSharedPath, "_Layout.cshtml");
+            RemoveFile(projectViewsSharedPath, "_Layout.cshtml.css");
             RemoveFile(projectViewsSharedPath, "Error.cshtml");
-             
+
             RemoveFolder(Path.Combine(layerPath, "Models"));
             RemoveFolder(Path.Combine(layerPath, "Controllers"));
 
@@ -106,12 +107,6 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             #endregion
         ";
     }
-
-    // 1. ViewComponents/SideMenuViewComponent.cs OK
-    // 2. Models/ViewModels OK
-    // 3. Controllers OK
-    // 4. Views
-    // 5. wwwroot
 
     #region SideMenuViewComponent
     public string GenerateSideMenuViewComponent()
@@ -201,10 +196,21 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                             PropertyAssignment(name: "Path", value: "\"/Home/Index\"")
                         ]
                     ),
-                    ObjectCreationCollection(
-                        typeName: "List<MenuItem>",
-                        items: [
-                            ..subMenuItems
+                    ObjectCreation(
+                        typeName: "MenuItem",
+                        members: [
+                            PropertyAssignment(name: "Title", value: "\"Pages\""),
+                            PropertyAssignment(name: "Icon", value: "\"<i class=\\\"fa-regular fa-folder-open\\\"></i>\""),
+                            PropertyAssignment(name: "GroupName", value: "\"Pages\""),
+                            PropertyAssignment(
+                                name: "SubMenuItems",
+                                expression: ObjectCreationCollection(
+                                    typeName: "List<MenuItem>",
+                                    items: [
+                                        ..subMenuItems
+                                    ]
+                                )
+                            ),
                         ]
                     )
                 ]
@@ -304,7 +310,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
     }
     public string GenerateViewModelCreate(Entity entity)
     {
-        Dto? createDto = entity.CreateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+        Dto? createDto = _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField).ThenInclude(y => y.FieldType));
         bool isThereCreateDto = createDto != default;
         string createModelType = isThereCreateDto ? createDto!.Name : $"{_appSetting.ModelLayerProjectName}.Entities.{entity.Name}";
 
@@ -317,7 +323,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         // SelectList Props
         if (isThereCreateDto)
         {
-            foreach (var dtoField in createDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+            foreach (var dtoField in createDto!.DtoFields.Where(df => df.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
             {
                 Relation? relation = _relationRepository.Get(
                     filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
@@ -346,7 +352,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         return CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Mvc.Rendering",
-                isThereCreateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.Blog.Commands" : string.Empty,
+                isThereCreateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands" : string.Empty,
             ],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
@@ -362,7 +368,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
     }
     public string GenerateViewModelUpdate(Entity entity)
     {
-        Dto? updateDto = entity.UpdateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.UpdateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+        Dto? updateDto = _dtoRepository.Get(f => f.Id == entity.UpdateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField).ThenInclude(y => y.FieldType));
         bool isThereUpdateDto = updateDto != default;
         string updateModelType = isThereUpdateDto ? updateDto!.Name : $"{_appSetting.ModelLayerProjectName}.Entities.{entity.Name}";
 
@@ -375,7 +381,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         // SelectList Props
         if (isThereUpdateDto)
         {
-            foreach (var dtoField in updateDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+            foreach (var dtoField in updateDto!.DtoFields.Where(df => df.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
             {
                 Relation? relation = _relationRepository.Get(
                     filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
@@ -404,7 +410,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         return CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Mvc.Rendering",
-                isThereUpdateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.Blog.Commands" : string.Empty,
+                isThereUpdateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands" : string.Empty,
             ],
             nspace: NamespaceDeclaration(
                 value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
@@ -435,9 +441,9 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                     .Include(x => x.RelatedEntity).ThenInclude(ti => ti.Fields)
             );
 
-            Dto? createDto = entity.CreateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+            Dto? createDto = entity.CreateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.CreateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField).ThenInclude(y => y.FieldType)) : default;
             bool isThereCreateDto = createDto != default;
-            Dto? updateDto = entity.UpdateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.UpdateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField)) : default;
+            Dto? updateDto = entity.UpdateDtoId != default ? _dtoRepository.Get(f => f.Id == entity.UpdateDtoId, include: i => i.Include(x => x.DtoFields).ThenInclude(y => y.SourceField).ThenInclude(y => y.FieldType)) : default;
             bool isThereUpdateDto = updateDto != default;
 
             List<string> relationalEntities = new List<string>() { entity.Name };
@@ -465,7 +471,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             // Selectable Relations for Create Action Method
             if (isThereCreateDto)
             {
-                foreach (var dtoField in createDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+                foreach (var dtoField in createDto!.DtoFields.Where(df => df.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
                 {
                     Relation? relation = _relationRepository.Get(
                         filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
@@ -498,7 +504,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             // Selectable Relations for Update Action Method
             if (isThereUpdateDto)
             {
-                foreach (var dtoField in updateDto!.DtoFields.Where(df => df.SourceField.FieldTypeId == (byte)FieldTypeSourceEnums.Base))
+                foreach (var dtoField in updateDto!.DtoFields.Where(df => df.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
                 {
                     Relation? relation = _relationRepository.Get(
                         filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
@@ -536,6 +542,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 $"{_appSetting.CoreLayerProjectName}.BaseRequestModels",
                 $"{_appSetting.ModelLayerProjectName}.Entities",
                 $"{_appSetting.BusinessLayerProjectName}.Abstract",
+                $"{_appSetting.WebUILayerProjectName}.Controllers.Base",
                 $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}"
             };
             if (dtos.Any(f => f.CrudTypeId != (byte)CrudTypeEnums.Read))
@@ -548,7 +555,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             #region Fields
             List<FieldDeclarationSyntax> fields =
             [
-                .. relationalEntities.Select(e => FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{e.Name}Service", $"_{e.Name.ToCamelCase()}Service")),
+                .. relationalEntities.Select(e => FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{e}Service", $"_{e.ToCamelCase()}Service")),
             ];
             #endregion
 
@@ -647,7 +654,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         #region CREATE
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
         methods.Add(MethodDeclaration(
-            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
+            attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Create",
             returnType: "Task<IActionResult>",
@@ -699,7 +706,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 new List<StatementSyntax>(
                 [
                     SyntaxFactory.ParseStatement(@$"
-                        var result = await {serviceName}.GetUpdateModelAsync({methodUniqueArgs});
+                        var result = await {serviceName}.{(updateDto != null ? "GetUpdateModelAsync" : "GetAsync")}({methodUniqueArgs});
                         if (!result.IsSuccess) return ToAction(result);
                     "),
                     ..selectableRelations_update.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
@@ -709,6 +716,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                         expression: ObjectCreation(
                             typeName: $"{entity.Name}UpdateViewModel",
                             members: [
+                                PropertyAssignment("UpdateModel", "result.Data"),
                                 ..selectableRelations_update.Select(sr => PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
                             ]
                         )
@@ -724,7 +732,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             name: "Update",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration(createDto?.Name ?? entity.Name, "updateModel", true)
+                ParameterDeclaration(updateDto?.Name ?? entity.Name, "updateModel", true)
             ],
             body: $@"
                 var result = await {serviceName}.UpdateAsync(updateModel);
@@ -832,23 +840,17 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
         foreach (var entity in entities)
         {
-            string code_indexPage = GenerateIndexPage(entity);
-            string code_createFormPage = viewGenerator.GenerateCreateFormPage(entity);
-            string code_updateFormPage = viewGenerator.GenerateUpdateFormPage(entity);
-
             string pathView = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Views", entity.Name);
             string pathPartial = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Views", entity.Name, "Partials");
 
-            results.Add(AddFile(pathView, $"Index.cshtml", code_indexPage));
-
-            results.Add(AddFile(pathPartial, $"CreateForm.cshtml", code_createFormPage));
-            results.Add(AddFile(pathPartial, $"UpdateForm.cshtml", code_updateFormPage));
+            results.Add(AddFile(pathView, $"Index.cshtml", IndexHtml(entity)));
+            results.Add(AddFile(pathPartial, $"CreateForm.cshtml", FormHtml(entity, false)));
+            results.Add(AddFile(pathPartial, $"UpdateForm.cshtml", FormHtml(entity, true)));
         }
-
         return string.Join("\n", results);
     }
 
-    public string GenerateIndexPage(Entity entity)
+    public string IndexHtml(Entity entity)
     {
         List<Field> fieldList = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id && f.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base, include: i => i.Include(x => x.FieldType), enableTracking: false);
         var filterableFields = fieldList.Where(f => f.Filterable).ToList();
@@ -871,12 +873,11 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         }
 
         #region Form Inputs
-        var codeFilterForm = new StringBuilder();
-
+        StringBuilder codeFilterForm = new StringBuilder();
         foreach (var field in filterableFields)
         {
             int inptType = field.GetVariableGroup(selectableRelations);
-            int inptKind = field.GetInputKind(inptType);
+            int inptKind = field.GetDatatableConditionKind(inptType);
             string inptCode = field.CreateInputHTML(inptType);
             codeFilterForm.Append(inptCode);
             filterInputs.Add((field.Name, (inptType, inptKind, inptCode)));
@@ -899,12 +900,12 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         StringBuilder tableHeaderColumns = new StringBuilder();
         if (isThereReportDto)
         {
-            foreach (var dtoField in reportDto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
+            foreach (var dtoField in reportDto!.DtoFields.Where(f => !f.SourceField.IsUnique && f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
                 tableHeaderColumns.AppendLine($"\t\t\t\t\t<th>{dtoField.Name.DivideToLabelName()}</th>");
         }
         else
         {
-            foreach (var field in fieldList.Where(f => f.IsUnique == false))
+            foreach (var field in fieldList.Where(f => !f.IsUnique))
                 tableHeaderColumns.AppendLine($"\t\t\t\t\t<th>{field.Name.DivideToLabelName()}</th>");
         }
 
@@ -975,12 +976,12 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                                 filters: [
                                     {{
                                         operator: 'eq',
-                                        field: 'IsDeleted',
+                                        field: 'isDeleted',
                                         value: false,
                                     }},
                                     {{
                                         operator: 'eq',
-                                        field: 'IsDeleted',
+                                        field: 'isDeleted',
                                         value: $('input[name=""IsDeleted""]:checked').prop(""checked"") || false,
                                     }}
                                 ]
@@ -1007,11 +1008,11 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
         if (isThereReportDto)
         {
-            foreach (var dtoField in reportDto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
+            foreach (var dtoField in reportDto!.DtoFields.Where(f => !f.SourceField.IsUnique && f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
             {
-                if(dtoField.SourceField.FieldTypeId == (byte)FieldTypeEnums.DateTime)
+                if (dtoField.SourceField.FieldTypeId == (byte)FieldTypeEnums.DateTime)
                 {
-                    datatableColumns.Append($@"
+                    codeDatatableColumns.Append($@"
                     {{
                         data: '{dtoField.Name}',
                         render: function (data) {{
@@ -1020,9 +1021,9 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                         }}
                     }},");
                 }
-                else if(dtoField.SourceField.FieldTypeId == (byte)FieldTypeEnums.Bool)
+                else if (dtoField.SourceField.FieldTypeId == (byte)FieldTypeEnums.Bool)
                 {
-                    datatableColumns.Append($@"
+                    codeDatatableColumns.Append($@"
                     {{
                         data: '{dtoField.Name}',
                         render: function (data) {{
@@ -1032,18 +1033,19 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                         }}
                     }},");
                 }
-                else{
-                    datatableColumns.AppendLine($"\t\t\t\t\t{{ data: '{dtoField.Name}' }},");
+                else
+                {
+                    codeDatatableColumns.AppendLine($"\t\t\t\t\t{{ data: '{dtoField.Name}' }},");
                 }
             }
         }
         else
         {
-            foreach (var field in fieldList.Where(f => f.IsUnique == false))
+            foreach (var field in fieldList.Where(f => !f.IsUnique))
             {
                 if (field.FieldTypeId == (byte)FieldTypeEnums.DateTime)
                 {
-                    datatableColumns.Append($@"
+                    codeDatatableColumns.Append($@"
                     {{
                         data: '{field.Name}',
                         render: function (data) {{
@@ -1054,7 +1056,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 }
                 else if (field.FieldTypeId == (byte)FieldTypeEnums.Bool)
                 {
-                    datatableColumns.Append($@"
+                    codeDatatableColumns.Append($@"
                     {{
                         data: '{field.Name}',
                         render: function (data) {{
@@ -1066,14 +1068,14 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 }
                 else
                 {
-                    datatableColumns.AppendLine($"\t\t\t\t\t{{ data: '{field.Name}' }},");
+                    codeDatatableColumns.AppendLine($"\t\t\t\t\t{{ data: '{field.Name}' }},");
                 }
             }
         }
 
         if (entity.Auditable)
         {
-            datatableColumns.Append(@"
+            codeDatatableColumns.Append(@"
                     {
                         data: 'CreateDateUtc',
                         render: function (data) {
@@ -1091,7 +1093,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         }
         if (entity.SoftDeletable)
         {
-            datatableColumns.Append(@"
+            codeDatatableColumns.Append(@"
                     {
                         data: 'isDeleted',
                         render: function (data) {
@@ -1113,7 +1115,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         string uniqueFieldParams = string.Join(", ", entity.Fields.Where(f => f.IsUnique).Select(d => $"\"{d.Name.ToCamelCase()}\": rowData.{d.Name.ToCamelCase()}"));
         if (entity.SoftDeletable)
         {
-            datatableColumns.Append($@"
+            codeDatatableColumns.Append($@"
                     {{
                         data: null,
                         defaultContent: '',
@@ -1121,7 +1123,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                         createdCell: function (td, cellData, rowData, row, col)
                         {{
                             let deleteHandleButton = rowData.isDeleted == true ?
-                                HelperService.UndoDeleteButtonTable({{ requestUrl: '{entity.Name}/UndoDelete', requestData: {{ {uniqueFieldParams} }}, pageTable: mainTable }}) :
+                                HelperService.UndoDeleteButtonTable({{ requestUrl: '{entity.Name}/Restore', requestData: {{ {uniqueFieldParams} }}, pageTable: mainTable }}) :
                                 HelperService.DeleteButtonTable({{requestUrl: '{entity.Name}/Delete', requestData: {{ {uniqueFieldParams} }}, pageTable: mainTable }});
 
                             DatatableManager.AppendRowButtons(td,
@@ -1141,7 +1143,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         }
         else
         {
-            datatableColumns.Append($@"
+            codeDatatableColumns.Append($@"
                     {{
                         data: null,
                         defaultContent: '',
@@ -1196,7 +1198,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 </div>
                 <div class=""separator border-gray-200""></div>
                 <div class=""px-7 py-5"">
-                    {codeFilterForm}
+                    {codeFilterForm.ToString()}
                     <div class=""d-flex justify-content-end"">
                         <button type=""reset"" class=""btn btn-sm btn-light btn-active-light-primary me-2"" data-kt-menu-dismiss=""true"">Reset</button>
                         <button type=""button"" onclick=""InitilazeTable(this)"" class=""btn btn-sm btn-primary"" data-kt-menu-dismiss=""true"">Apply</button>
@@ -1213,7 +1215,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         <table id=""main_table"" class=""table align-middle table-row-dashed fs-6 gy-5"">
             <thead>
                 <tr class=""text-start text-gray-500 fw-bold fs-7 text-uppercase gs-0"">
-                    {tableHeaderColumns}
+                    {tableHeaderColumns.ToString()}
                 </tr>
             </thead>
             <tbody class=""fw-semibold text-gray-600"">
@@ -1237,17 +1239,17 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             mainTable = DatatableManager.Create({{
                 serverSide: true,
                 tableId: 'main_table',
-                path: 'User/DatatableServerSide',
+                path: '{entity.Name}/DatatableServerSide',
                 method: 'Post',
                 buttonElement: btn,
                 {codeDatatableRequestData}
                 columns: [
-                    {codeDatatableColumns}
+                    {codeDatatableColumns.ToString()}
                 ],
                 customButtons:
                 [  
                     {{
-                        text: '<span class=""dynamic-content""><i class=""fa-solid fa-file-circle-plus me-2""></i>Add New {entityName}</span>',
+                        text: '<span class=""dynamic-content""><i class=""fa-solid fa-file-circle-plus me-2""></i>Add New {entity.Name}</span>',
                         className: 'btn btn-primary mx-2',
                         action: (e_btn) =>
                         {{
@@ -1266,11 +1268,74 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 }}
 ";
     }
+
+    private string FormHtml(Entity entity, bool isUpdate)
+    {
+        List<Field> fieldList = _fieldRepository.GetAll(filter: f => f.EntityId == entity.Id, include: i => i.Include(x => x.FieldType), enableTracking: false);
+
+        int searchParam = isUpdate ? entity.UpdateDtoId ?? default : entity.CreateDtoId ?? default;
+        Dto? dto = _dtoRepository.Get(f => f.Id == searchParam, include: i => i.Include(x => x.DtoFields).ThenInclude(x => x.SourceField).ThenInclude(x => x.FieldType));
+        bool isThereDto = dto != default;
+
+        StringBuilder codeFormInputs = new StringBuilder();
+
+        if (isThereDto)
+        {
+            var selectableRelations = new Dictionary<string, string>();
+            foreach (var dtoField in dto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
+            {
+                Relation? relation = _relationRepository.Get(
+                  filter: f => f.ForeignFieldId == dtoField.SourceField.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                  include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                selectableRelations.Add(dtoField.SourceField.Name, relation.PrimaryField.Entity.Name);
+            }
+
+            foreach (var dtoField in dto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)FieldTypeSourceEnums.Base))
+            {
+                int inptType = dtoField.SourceField.GetVariableGroup(selectableRelations);
+                codeFormInputs.Append(dtoField.SourceField.CreateFormInputHTML(inptType, isUpdate ? "UpdateModel" : "CreateModel"));
+            }
+        }
+        else
+        {
+            var selectableRelations = new Dictionary<string, string>();
+            foreach (var field in fieldList.Where(f => f.IsUnique == false))
+            {
+                Relation? relation = _relationRepository.Get(
+                  filter: f => f.ForeignFieldId == field.Id && f.RelationTypeId == (byte)RelationTypeEnums.OneToMany,
+                  include: i => i.Include(x => x.PrimaryField).ThenInclude(x => x.Entity)
+                );
+                if (relation == null) continue;
+
+                selectableRelations.Add(field.Name, relation.PrimaryField.Entity.Name);
+            }
+
+            foreach (var field in fieldList.Where(f => f.IsUnique == false))
+            {
+                int inptType = field.GetVariableGroup(selectableRelations);
+                codeFormInputs.Append(field.CreateFormInputHTML(inptType, isUpdate ? "UpdateModel" : "CreateModel"));
+            }
+        }
+
+        return $@"
+@using {_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}
+@model {entity.Name}{(isUpdate ? "Update" : "Create")}ViewModel
+@{{
+	Layout = null;
+}}
+
+<form asp-controller=""{entity.Name}"" asp-action=""{(isUpdate ? "Update" : "Create")}"" method=""post""> 
+	<div class=""row row-gap-4 m-2"">
+        {codeFormInputs.ToString()}
+	</div>
+</form>";
+    }
     #endregion
 
-
-
-    public string Generate_wwwroot(string solutionPath)
+    public string Copywwwroot()
     {
         if (string.IsNullOrEmpty(_appSetting.Path)) return "Warning: Not Found Destionation Path to Generation wwwroot files";
 
@@ -1278,22 +1343,11 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
         string basePath = AppContext.BaseDirectory;
 
-        string sourcePath_assets = Path.GetFullPath(Path.Combine(basePath, @"CodeGenerators\NLayer\WebUI\wwwroot\assets"));
-        string sourcePath_css = Path.GetFullPath(Path.Combine(basePath, @"CodeGenerators\NLayer\WebUI\wwwroot\css"));
-        string sourcePath_js = Path.GetFullPath(Path.Combine(basePath, @"CodeGenerators\NLayer\WebUI\wwwroot\js"));
-        string sourcePath_lib = Path.GetFullPath(Path.Combine(basePath, @"CodeGenerators\NLayer\WebUI\wwwroot\lib"));
+        string sourcePath_assets = Path.GetFullPath(Path.Combine(basePath, @"CodeGenerators\NLayer\WebUI\wwwroot"));
 
-        string destPath_assets = Path.GetFullPath(Path.Combine(_appSetting.Path, _appSetting.SolutionName, @"WebUI\wwwroot\assets"));
-        string destPath_css = Path.GetFullPath(Path.Combine(_appSetting.Path, _appSetting.SolutionName, @"WebUI\wwwroot\css"));
-        string destPath_js = Path.GetFullPath(Path.Combine(_appSetting.Path, _appSetting.SolutionName, @"WebUI\wwwroot\js"));
-        string destPath_lib = Path.GetFullPath(Path.Combine(_appSetting.Path, _appSetting.SolutionName, @"WebUI\wwwroot\lib"));
+        string destPath_assets = Path.GetFullPath(Path.Combine(_appSetting.SolutionPath, $@"{_appSetting.WebUILayerProjectName}\wwwroot"));
 
-        results.Add(this.CopyDirectory(sourcePath_assets, destPath_assets));
-        results.Add(this.CopyDirectory(sourcePath_css, destPath_css));
-        results.Add(this.CopyDirectory(sourcePath_js, destPath_js));
-        results.Add(this.CopyDirectory(sourcePath_lib, destPath_lib));
+        results.Add(CopyDirectory(sourcePath_assets, destPath_assets));
         return "wwwroot generated";
     }
-
-
 }

@@ -69,12 +69,11 @@ namespace GeneratorWPF.ViewModel._Dto
                 {
                     _dtoRepository.Delete((int)dtoId);
                     MessageBox.Show("Dto removed successfully ", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                    DtoList = _dtoRepository.GetDetailList(f => EntiyIdForFilter != default ? f.Id == EntiyIdForFilter : true);
+                    DtoList = _dtoRepository.GetDetailList(f => EntiyIdForFilter != default ? f.RelatedEntityId == EntiyIdForFilter : true);
                 }
                 catch (Exception)
                 {
                     MessageBox.Show("Dto could'nt remove", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    throw;
                 }
             });
         }

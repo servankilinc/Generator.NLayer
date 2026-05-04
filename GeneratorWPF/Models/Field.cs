@@ -46,6 +46,7 @@ namespace GeneratorWPF.Models
 
         /// <summary>
         /// 1: Select
+        /// 7: Hidden
         /// 2: Number
         /// 3: Text
         /// 4: CheckBox
@@ -55,10 +56,14 @@ namespace GeneratorWPF.Models
         /// <returns></returns>
         public int GetVariableGroup(Dictionary<string, string> selectableRelations) // key: fieldName, value: entityName
         {
-            // joined(relational props) props = selectableRelations 
-            if (selectableRelations.Any(f => f.Key.Trim().ToLower() == this.Name.Trim().ToLower())) // || this.FieldTypeId == (byte)FieldTypeEnums.Int || this.FieldTypeId == (byte)FieldTypeEnums.Guid
+            if (selectableRelations.Any(f => f.Key.Trim().ToLower() == this.Name.Trim().ToLower()))
             {
                 return 1;
+            }
+            // ilişki tanımları arasında seçilebilir bir ilişki yoksa ve alan benzersiz veya Guid tipindeyse, bu alanı gizli olarak işaretle
+            else if (this.IsUnique || this.FieldTypeId == (byte)FieldTypeEnums.Guid)
+            {
+                return 7;
             }
             else if (
                 this.FieldTypeId == (byte)FieldTypeEnums.Int ||
@@ -96,13 +101,13 @@ namespace GeneratorWPF.Models
         /// 4: CheckBox
         /// </summary>
         /// <returns></returns>
-        public int GetInputKind(int typeId)
+        public int GetDatatableConditionKind(int typeId)
         {
             if (typeId == 1)
             {
                 return 1;
             }
-            else if (typeId == 2 || typeId == 5 || typeId == 6)
+            else if (typeId == 2 || typeId == 5 || typeId == 6 || typeId == 7)
             {
                 return 2;
             }
@@ -126,20 +131,22 @@ namespace GeneratorWPF.Models
         /// 4: CheckBox
         /// 5: DateTime
         /// 6: Time
+        /// 7: Hidden
         /// </summary>
         /// <returns></returns>
         public string CreateInputHTML(int typeId, string? parrentHtmlId = null)
         {
+            parrentHtmlId = parrentHtmlId != null ? $"data-dropdown-parent=\"#{parrentHtmlId}\"" : string.Empty;
+
             if (typeId == 1)
             {
                 return $@"
                     <div class=""mb-10"">
                         <label class=""form-label fw-semibold"" for=""slct_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
-                        <select id=""slct_{this.Name.ToCamelCase()}"" class=""autoInitSelect2 form-select form-select-sm form-select-solid"" name=""{this.Name}"" asp-items=""Model.{this.Name.Pluralize()}"" data-control=""select2"" data-dropdown-parent=""#{parrentHtmlId}"" data-allow-clear=""true"">
+                        <select id=""slct_{this.Name.ToCamelCase()}"" class=""autoInitSelect2 form-select form-select-sm form-select-solid"" name=""{this.Name}"" asp-items=""Model.{this.Name.Pluralize()}"" data-control=""select2"" {parrentHtmlId} data-allow-clear=""true"">
                             <option></option>
                         </select>
-                    </div>
-                ";
+                    </div>";
             }
             else if (typeId == 2)
             {
@@ -147,8 +154,7 @@ namespace GeneratorWPF.Models
                     <div class=""mb-10"">
                         <label class=""form-label fw-semibold"" for=""inpt_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
                         <input id=""inpt_{this.Name.ToCamelCase()}"" class=""form-control form-control-sm form-control-solid"" name=""{this.Name}"" type=""number""/>
-                    </div>
-                ";
+                    </div>";
             }
             else if (typeId == 3)
             {
@@ -156,19 +162,15 @@ namespace GeneratorWPF.Models
                     <div class=""mb-10"">
                         <label class=""form-label fw-semibold"" for=""inpt_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
                         <input id=""inpt_{this.Name.ToCamelCase()}"" class=""form-control form-control-sm form-control-solid"" name=""{this.Name}"" type=""text""/>
-                    </div>
-                ";
+                    </div>";
             }
             else if (typeId == 4)
             {
                 return $@"
                     <div class=""mb-10 form-check"">
                         <input id=""chckb_{this.Name.ToCamelCase()}"" class=""form-check-input"" name=""{this.Name}"" type=""checkbox"" value=""""/>
-                        <label class=""form-check-label fw-semibold"" for=""chckb_{this.Name.ToCamelCase()}"">
-                            {this.Name.DivideToLabelName()}
-                        </label>
-                    </div>
-                ";
+                        <label class=""form-check-label fw-semibold"" for=""chckb_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
+                    </div>";
             }
             else if (typeId == 5)
             {
@@ -176,8 +178,7 @@ namespace GeneratorWPF.Models
                     <div class=""mb-10"">
                         <label class=""form-label fw-semibold"" for=""dtpick_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
                         <input id=""dtpick_{this.Name.ToCamelCase()}"" class=""autoInitFlatPicker form-control form-control-sm form-control-solid"" name=""{this.Name}""/>
-                    </div>
-                ";
+                    </div>";
             }
             else if (typeId == 6)
             {
@@ -185,8 +186,97 @@ namespace GeneratorWPF.Models
                     <div class=""mb-10"">
                         <label class=""form-label fw-semibold"" for=""timepick_{this.Name.ToCamelCase()}"">{this.Name.DivideToLabelName()}</label>
                         <input id=""timepick_{this.Name.ToCamelCase()}"" class=""autoInitFlatPickerOnlyTime form-control form-control-sm form-control-solid"" name=""{this.Name}""/>
-                    </div>
-                ";
+                    </div>";
+            }
+            else if(typeId == 7)
+            {
+                return $@"
+                    <input name=""{this.Name}"" type=""hidden""/>";
+            }
+            else
+            {
+                return string.Empty;
+            }
+        }
+
+
+        /// <summary>
+        /// 1: Select
+        /// 2: Number
+        /// 3: Text
+        /// 4: CheckBox
+        /// 5: DateTime
+        /// 6: Time
+        /// 7: Hidden
+        /// </summary>
+        /// <returns></returns>
+        public string CreateFormInputHTML(int typeId, string modelName, string? parrentHtmlId = null)
+        {
+            parrentHtmlId = parrentHtmlId != null ? $"data-dropdown-parent=\"#{parrentHtmlId}\"" : string.Empty;
+
+
+            if (typeId == 1)
+            {
+                return $@"
+        <div class=""col-md-6"">
+            <label class=""form-label fw-semibold"" asp-for=""{modelName}.{this.Name}"">{this.Name.DivideToLabelName()}</label>
+            <select class=""autoInitSelect2 form-select form-select-solid"" asp-items=""Model.{this.Name.Pluralize()}"" asp-for=""{modelName}.{this.Name}"" data-control=""select2"" {parrentHtmlId} data-allow-clear=""true"">
+                <option></option>
+            </select>
+            <span class=""form_validation_feedback"" asp-validation-for=""{modelName}.{this.Name}""></span>
+        </div>";
+            }
+            else if (typeId == 2)
+            {
+                return $@"
+        <div class=""col-md-6"">
+            <label class=""form-label fw-semibold"" asp-for=""{modelName}.{this.Name}"">{this.Name.DivideToLabelName()}</label>
+            <input class=""form-control form-control-solid"" asp-for=""{modelName}.{this.Name}"" type=""number""/>
+            <span class=""form_validation_feedback"" asp-validation-for=""{modelName}.{this.Name}""></span>
+        </div>";
+            }
+            else if (typeId == 3)
+            {
+                return $@"
+        <div class=""col-md-6"">
+            <label class=""form-label fw-semibold"" asp-for=""{modelName}.{this.Name}"">{this.Name.DivideToLabelName()}</label>
+            <input class=""form-control form-control-solid"" asp-for=""{modelName}.{this.Name}"" type=""text""/>
+            <span class=""form_validation_feedback"" asp-validation-for=""{modelName}.{this.Name}""></span>
+        </div>";
+            }
+            else if (typeId == 4)
+            {
+                return $@"
+        <div class=""col-md-6"">
+            <div class=""form-check"">
+                <input class=""form-check-input"" asp-for=""{modelName}.{this.Name}"" type=""checkbox"" value=""""/>
+                <label class=""form-check-label fw-semibold"" asp-for=""{modelName}.{this.Name}"">{this.Name.DivideToLabelName()}</label>
+                <span class=""form_validation_feedback"" asp-validation-for=""{modelName}.{this.Name}""></span>
+            </div>
+        </div>";
+            }
+            else if (typeId == 5)
+            {
+                return $@"
+        <div class=""col-md-6"">
+            <label class=""form-label fw-semibold"" asp-for=""{modelName}.{this.Name}"">{this.Name.DivideToLabelName()}</label>
+            <input class=""autoInitFlatPicker form-control form-control-solid"" asp-for=""{modelName}.{this.Name}""/>
+            <span class=""form_validation_feedback"" asp-validation-for=""{modelName}.{this.Name}""></span>
+        </div>";
+            }
+            else if (typeId == 6)
+            {
+                return $@"
+      <div class=""col-md-6"">
+            <label class=""form-label fw-semibold"" asp-for=""{modelName}.{this.Name}"">{this.Name.DivideToLabelName()}</label>
+            <input class=""autoInitFlatPickerOnlyTime form-control form-control-solid"" asp-for=""{modelName}.{this.Name}""/>
+            <span class=""form_validation_feedback"" asp-validation-for=""{modelName}.{this.Name}""></span>
+        </div>";
+            }
+            else if(typeId == 7)
+            {
+                return $@"
+        <input asp-for=""{modelName}.{this.Name}"" type=""hidden""/>";
             }
             else
             {

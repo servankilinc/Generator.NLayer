@@ -332,7 +332,7 @@ public class NLayerGeneratorBase
 
 
     #region Roslyn Methods
-    protected ParameterSyntax ParameterDeclaration(string type, string name, bool required = true, SyntaxKind[]? modifiers = null)
+    protected ParameterSyntax ParameterDeclaration(string type, string name, bool required = true, SyntaxKind[]? modifiers = null, string? defaultValue = null)
     {
         if (required == false && !Statics.nonReferanceTypes.Contains(type) && !type.EndsWith("?"))
             type += "?";
@@ -347,17 +347,35 @@ public class NLayerGeneratorBase
         if (required == false)
             parameter = parameter.WithDefault(
                 SyntaxFactory.EqualsValueClause(
+                    defaultValue != null ? 
+                    SyntaxFactory.ParseExpression(defaultValue) :
                     SyntaxFactory.LiteralExpression(
                          SyntaxKind.DefaultLiteralExpression,
                          SyntaxFactory.Token(SyntaxKind.DefaultKeyword)
                     )
                 )
             );
+        else if (required == true && defaultValue != null)
+            parameter = parameter.WithDefault(
+                SyntaxFactory.EqualsValueClause(
+                    SyntaxFactory.ParseExpression(defaultValue)
+                )
+            );
 
         return parameter.NormalizeWhitespace();
     }
+    protected AccessorDeclarationSyntax AccessorDeclaration(SyntaxKind kind, SyntaxKind[]? modifiers = null)
+    {
+        var accessor = SyntaxFactory
+            .AccessorDeclaration(kind)
+            .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
+        if (modifiers?.Length > 0)
+            accessor = accessor.AddModifiers([.. modifiers.Select(SyntaxFactory.Token)]);
+        return accessor.NormalizeWhitespace();
+    }
 
-    protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, SyntaxKind[]? modifiers = null, AttributeSyntax[]? attributes = null, bool earlyInstance = false)
+
+    protected PropertyDeclarationSyntax PropertyDeclaration(string type, string name, bool required = false, SyntaxKind[]? modifiers = null, AttributeSyntax[]? attributes = null, bool earlyInstance = false, bool nullableDecleration = true, AccessorDeclarationSyntax[]? accessors = null)
     {
         if (required == false && !type.EndsWith("?") && !Statics.nonReferanceTypes.Contains(type))
             type += "?";
@@ -366,8 +384,15 @@ public class NLayerGeneratorBase
 
         var property = SyntaxFactory
             .PropertyDeclaration(SyntaxFactory.ParseTypeName(type), SyntaxFactory.Identifier(name))
-            .AddModifiers(modifiers != null && modifiers.Length > 0 ? modifiers.Select(SyntaxFactory.Token).ToArray() : [SyntaxFactory.Token(SyntaxKind.PublicKeyword)])
-            .AddAccessorListAccessors(
+            .AddModifiers(modifiers != null ? modifiers.Length == 0 ? [] : modifiers.Select(SyntaxFactory.Token).ToArray() : [SyntaxFactory.Token(SyntaxKind.PublicKeyword)]);
+
+        if (accessors != null && accessors.Length > 0)
+        {
+            property = property.AddAccessorListAccessors(accessors);
+        }
+        else
+        {
+            property = property.AddAccessorListAccessors(
                 SyntaxFactory
                     .AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken)),
@@ -375,6 +400,7 @@ public class NLayerGeneratorBase
                     .AccessorDeclaration(SyntaxKind.SetAccessorDeclaration)
                     .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken))
             );
+        }
 
         if (attributes?.Length > 0)
             property = property.AddAttributeLists(SyntaxFactory.AttributeList(SyntaxFactory.SeparatedList(attributes)));
@@ -390,7 +416,7 @@ public class NLayerGeneratorBase
                 )
                 .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken));
         }
-        else if (required == true && !Statics.nonReferanceTypes.Contains(type))
+        else if (required == true && nullableDecleration && !Statics.nonReferanceTypes.Contains(type) && Statics.IsReferanceTypeNullable(type))
         {
             property = property
                 .WithInitializer(
@@ -617,21 +643,22 @@ public class NLayerGeneratorBase
 
     // ex: memberName: "Title", instanceName: "book"
     // generates: Title = "The Great Gatsby"
-    protected AssignmentExpressionSyntax PropertyAssignment(string name, string value)
+    protected AssignmentExpressionSyntax PropertyAssignment(string name, string? value = null, ExpressionSyntax? expression = null)
     {
         return SyntaxFactory.AssignmentExpression(
             SyntaxKind.SimpleAssignmentExpression,
             SyntaxFactory.ParseTypeName(name),
-            SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(value))
+            value != null
+                ? SyntaxFactory.ParseExpression(value!)
+                : expression ?? SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)
         ).NormalizeWhitespace();
     }
 
 
-    protected ReturnStatementSyntax ReturnStatement(string type)
+    protected ReturnStatementSyntax ReturnStatement(string expression)
     {
         return SyntaxFactory.ReturnStatement(
-            SyntaxFactory.InvocationExpression(
-                SyntaxFactory.ParseName(type)) 
+            SyntaxFactory.ParseExpression(expression)
         ).NormalizeWhitespace();
     }
     #endregion

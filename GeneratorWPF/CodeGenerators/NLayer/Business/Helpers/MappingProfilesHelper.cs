@@ -1,4 +1,4 @@
-﻿using GeneratorWPF.Models;
+using GeneratorWPF.Models;
 using GeneratorWPF.Models.Enums;
 using GeneratorWPF.Repository;
 using Microsoft.CodeAnalysis;
@@ -116,8 +116,13 @@ public static class MappingProfilesHelper
         StringBuilder sb = new();
         sb.Append($"CreateMap<{entity.Name}, {dto.Name}>()");
 
+        var processedFields = new HashSet<string>();
+
         foreach (var df in dtoFields)
         {
+            if (!processedFields.Add(df.Name))
+                continue;
+
             var source = df.SourceField;
             if (source == null || source.FieldType == null)
                 continue;
@@ -138,36 +143,71 @@ public static class MappingProfilesHelper
 
                 var first = relations.First();
                 bool firstIsPrimary = first.Relation.PrimaryField.EntityId == entity.Id;
-                string firstNavProp = firstIsPrimary ? first.Relation.ForeignEntityVirPropName : first.Relation.PrimaryEntityVirPropName;
 
-                int lastEntityId = firstIsPrimary ? first.Relation.ForeignField.EntityId : first.Relation.PrimaryField.EntityId;
-                bool isInList = first.Relation.RelationTypeId == (int)RelationTypeEnums.OneToMany;
+                string firstNavProp = firstIsPrimary
+                    ? first.Relation.PrimaryEntityVirPropName
+                    : first.Relation.ForeignEntityVirPropName;
 
-                string chain = $"src.{firstNavProp}";
+                int lastEntityId = firstIsPrimary
+                    ? first.Relation.ForeignField.EntityId
+                    : first.Relation.PrimaryField.EntityId;
+
+                bool isInList = first.Relation.RelationTypeId == (int)RelationTypeEnums.OneToMany && firstIsPrimary;
+
+                string chain = firstNavProp;
 
                 for (int i = 1; i < relations.Count; i++)
                 {
                     var rel = relations[i];
                     bool isPrimary = rel.Relation.PrimaryField.EntityId == lastEntityId;
-                    string navProp = isPrimary ? rel.Relation.ForeignEntityVirPropName : rel.Relation.PrimaryEntityVirPropName;
-                    bool nextIsList = rel.Relation.RelationTypeId == (int)RelationTypeEnums.OneToMany && !isPrimary;
+
+                    string navProp = isPrimary
+                        ? rel.Relation.PrimaryEntityVirPropName
+                        : rel.Relation.ForeignEntityVirPropName;
+
+                    bool nextIsList = rel.Relation.RelationTypeId == (int)RelationTypeEnums.OneToMany && isPrimary;
 
                     chain = isInList
-                        ? (nextIsList ? $"{chain}.SelectMany(x => x.{navProp})" : $"{chain}.Select(x => x.{navProp})")
+                        ? (nextIsList
+                            ? $"{chain}.SelectMany(x => x.{navProp})"
+                            : $"{chain}.Select(x => x.{navProp})")
                         : $"{chain}.{navProp}";
 
-                    lastEntityId = isPrimary ? rel.Relation.ForeignField.EntityId : rel.Relation.PrimaryField.EntityId;
+                    lastEntityId = isPrimary
+                        ? rel.Relation.ForeignField.EntityId
+                        : rel.Relation.PrimaryField.EntityId;
+
                     if (!isInList) isInList = nextIsList;
                 }
 
                 if (source.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Base)
-                    chain = isInList ? $"{chain}.Select(x => x.{source.Name})" : $"{chain}.{source.Name}";
+                    chain = isInList
+                        ? $"{chain}.Select(x => x.{source.Name})"
+                        : $"{chain}.{source.Name}";
 
-                sb.Append($".ForMember(dest => dest.{df.Name}, opt => opt.MapFrom(src => {chain} != default ? {chain} : default))");
+                sb.Append($".ForMember(dest => dest.{df.Name}, opt => opt.MapFrom(src => src.{firstNavProp} != default ? src.{chain} : default))");
+            }
+        }
+
+        if (entity.ReportDtoId == dto.Id)
+        {
+            if (entity.Auditable)
+            {
+                sb.Append($".ForMember(dest => dest.CreatedBy, opt => opt.MapFrom(src => src.CreatedBy))");
+                sb.Append($".ForMember(dest => dest.UpdatedBy, opt => opt.MapFrom(src => src.UpdatedBy))");
+                sb.Append($".ForMember(dest => dest.CreateDateUtc, opt => opt.MapFrom(src => src.CreateDateUtc))");
+                sb.Append($".ForMember(dest => dest.UpdateDateUtc, opt => opt.MapFrom(src => src.UpdateDateUtc))");
+            }
+            if (entity.SoftDeletable)
+            {
+                sb.Append($".ForMember(dest => dest.DeletedBy, opt => opt.MapFrom(src => src.DeletedBy))");
+                sb.Append($".ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(src => src.IsDeleted))");
+                sb.Append($".ForMember(dest => dest.DeletedDateUtc, opt => opt.MapFrom(src => src.DeletedDateUtc))");
             }
         }
 
         sb.Append(".ForAllMembers(opt => opt.Condition((src, dest, srcMember, destMember) => !Equals(srcMember, destMember)));");
+
         return SyntaxFactory.ParseStatement(sb.ToString());
     }
     #endregion

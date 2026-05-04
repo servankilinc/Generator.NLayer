@@ -70,7 +70,7 @@ public class HeaderViewComponent : ViewComponent
         };
 
         localizations = localizations
-            .Where(loc => _localizationSettings.AvailableLanugages.Any(lang => lang == loc.Language))
+            .Where(loc => _localizationSettings.AvailableLanguages.Any(lang => lang == loc.Language))
             .ToList();
 
         foreach (var item in localizations) 

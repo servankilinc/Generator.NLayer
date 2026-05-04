@@ -96,7 +96,26 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                             name: $"{entity.Name}Service",
                             modifiers: [SyntaxKind.PublicKeyword],
                             baseTypes: [SyntaxFactory.ParseTypeName($"I{entity.Name}Service")],
-                            members: [..GenerateConcreteMethods(entity, dtos)]
+                            members: [
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IUnitOfWork", "_unitOfWork"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IValidationService", "_validationService"),
+                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IMapper", "_mapper"),
+                                ConstructorDeclaration(
+                                    modifiers: [SyntaxKind.PublicKeyword],
+                                    name: $"{entity.Name}Service",
+                                    parameters: [
+                                        ParameterDeclaration("IUnitOfWork", "unitOfWork", true),
+                                        ParameterDeclaration("IValidationService", "validationService", true),
+                                        ParameterDeclaration("IMapper", "mapper", true)
+                                    ],
+                                    statements: [
+                                        StatementExpression("_unitOfWork", "unitOfWork"),
+                                        StatementExpression("_validationService", "validationService"),
+                                        StatementExpression("_mapper", "mapper")
+                                    ]
+                                ),
+                                ..GenerateConcreteMethods(entity, dtos)
+                            ]
                         )
                     ]
                 )
@@ -111,9 +130,9 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             var code_IAuthService = CompilationUnit(
                 usings: [
                     $"{_appSetting.CoreLayerProjectName}.Utils.ResultPattern",
-                    $"{_appSetting.ModelLayerProjectName}.Dtos.Auth.Login",
-                    $"{_appSetting.ModelLayerProjectName}.Dtos.Auth.Refresh",
-                    $"{_appSetting.ModelLayerProjectName}.Dtos.Auth.SignUp",
+                    $"{_appSetting.ModelLayerProjectName}.Auth.Login",
+                    $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
+                    $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
                 ],
                 nspace: NamespaceDeclaration(
                     value: $"{_appSetting.BusinessLayerProjectName}.Abstract",
@@ -127,7 +146,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     returnType: $"Task<Result<LoginResponse>>",
                                     parameters: [
                                         ParameterDeclaration("LoginRequest", "loginRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     isThereBody: false
                                 ),
@@ -136,7 +155,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     returnType: $"Task<Result<SignUpResponse>>",
                                     parameters: [
                                         ParameterDeclaration("SignUpRequest", "signUpRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     isThereBody: false
                                 ),
@@ -144,8 +163,8 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     name: "RefreshAsync",
                                     returnType: $"Task<Result<RefreshAuthResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("RefreshRequest", "refreshAuthRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                        ParameterDeclaration("RefreshAuthRequest", "refreshAuthRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     isThereBody: false
                                 )
@@ -196,13 +215,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     modifiers: [SyntaxKind.PublicKeyword],
                                     name: "AuthService",
                                     parameters: [
-                                        ParameterDeclaration("IUnitOfWork", "unitOfWork", false),
-                                        ParameterDeclaration("ITokenService", "tokenService", false),
-                                        ParameterDeclaration("UserManager<User>", "userManager", false),
-                                        ParameterDeclaration("SignInManager<User>", "signInManager", false),
-                                        ParameterDeclaration("IHttpContextManager", "httpContextManager", false),
-                                        ParameterDeclaration("IValidationService", "validationService", false),
-                                        ParameterDeclaration("IMapper", "mapper", false)
+                                        ParameterDeclaration("IUnitOfWork", "unitOfWork", true),
+                                        ParameterDeclaration("ITokenService", "tokenService", true),
+                                        ParameterDeclaration("UserManager<User>", "userManager", true),
+                                        ParameterDeclaration("SignInManager<User>", "signInManager", true),
+                                        ParameterDeclaration("IHttpContextManager", "httpContextManager", true),
+                                        ParameterDeclaration("IValidationService", "validationService", true),
+                                        ParameterDeclaration("IMapper", "mapper", true)
                                     ],
                                     statements: [
                                         StatementExpression("unitOfWork", "_unitOfWork"),
@@ -221,7 +240,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     returnType: $"Task<Result<LoginResponse>>",
                                     parameters: [
                                         ParameterDeclaration("LoginRequest", "loginRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     body: @"
                                         var validationResult = await _validationService.ValidateAsync(loginRequest, cancellationToken);
@@ -310,7 +329,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     returnType: $"Task<Result<SignUpResponse>>",
                                     parameters: [
                                         ParameterDeclaration("SignUpRequest", "signUpRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     body: @"
                                         try
@@ -400,8 +419,8 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                     name: "RefreshAsync",
                                     returnType: $"Task<Result<RefreshAuthResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("RefreshRequest", "refreshAuthRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                                        ParameterDeclaration("RefreshAuthRequest", "refreshAuthRequest", true),
+                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     body: @"
                                         try
@@ -541,22 +560,20 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region GET
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
                 ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
                 ..uniqueFieldParameters,
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -564,12 +581,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)CrudTypeEnums.Read))
         {
             methods.Add(MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.ServiceGetMethodName(entity),
                 returnType: $"Task<Result<{dto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -578,22 +594,20 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region GET LIST
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
                 ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
                 ParameterDeclaration("DynamicRequest", "request", false),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -601,12 +615,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)CrudTypeEnums.Read))
         {
             methods.Add(MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.ServiceGetListMethodName(entity),
                 returnType: $"Task<Result<ICollection<{dto.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicRequest", "request", false),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -617,12 +630,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         if (entity.Fields.Count(f => f.IsUnique) == 1)
         {
             methods.Add(MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "SelectListAsync",
                 returnType: "Task<Result<SelectList>>",
                 parameters: [
-                    ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -632,12 +644,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region CREATE
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "CreateAsync",
             returnType: $"Task<Result>",
             parameters: [
                 ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -648,23 +659,21 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         if (entity.UpdateDtoId != default && updateDto != default)
         {
             methods.Add(MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "GetUpdateModelAsync",
                 returnType: $"Task<Result<{updateDto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
         }
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "UpdateAsync",
             returnType: $"Task<Result>",
             parameters: [
                 ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -673,17 +682,16 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region DELETE & RESTORE
         var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DeleteAsync",
             returnType: $"Task<Result>",
             parameters:
                 deleteDto != null ? [
                     ParameterDeclaration(deleteDto.Name, "request", true) ,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ] :
                 [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
             isThereBody: false
         ));
@@ -691,12 +699,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         if (entity.SoftDeletable)
         {
             methods.Add(MethodDeclaration(
-                modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "RestoreAsync",
                 returnType: $"Task<Result>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -705,12 +712,11 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region PAGINATION
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "PaginationAsync",
             returnType: $"Task<Result<PaginationResponse<{reportDto?.Name ?? entity.Name}>>>",
             parameters: [
                 ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -718,22 +724,20 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region DATATABLE
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DatatableClientSideAsync",
             returnType: $"Task<Result<DatatableResponseClientSide<{reportDto?.Name ?? entity.Name}>>>",
             parameters: [
                 ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
         methods.Add(MethodDeclaration(
-            modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DatatableServerSideAsync",
             returnType: $"Task<Result<DatatableResponseServerSide<{reportDto?.Name ?? entity.Name}>>>",
             parameters: [
                 ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -758,7 +762,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
                 ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: @$"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync(
@@ -776,7 +780,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
                 ..uniqueFieldParameters,
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: @$"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync(
@@ -797,7 +801,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<{dto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: @$"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync<{dto.Name}>(
@@ -819,8 +823,8 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
-                ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: @$"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync(
@@ -838,7 +842,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
                 ParameterDeclaration("DynamicRequest", "request", false),
-                ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: $@"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync(
@@ -861,7 +865,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<ICollection<{dto.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicRequest", "request", false),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync<{dto.Name}>(
@@ -891,8 +895,8 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     name: "SelectListAsync",
                     returnType: "Task<Result<SelectList>>",
                     parameters: [
-                        ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                        ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                        ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
+                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                     ],
                     body: $@"
                         var list = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync<object>(
@@ -922,7 +926,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result>",
                 parameters: [
                     ParameterDeclaration(createDto.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
@@ -942,7 +946,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result>",
                 parameters: [
                     ParameterDeclaration(entity.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     await _unitOfWork.{entity.Name.Pluralize()}.AddAndSaveAsync(request, cancellationToken);
@@ -962,7 +966,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<{updateDto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync<{updateDto.Name}>(
@@ -981,7 +985,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result>",
                 parameters: [
                     ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
@@ -1005,7 +1009,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result>",
                 parameters: [
                     ParameterDeclaration(entity.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var entity = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync({entity.WhereRule(uniqueFields, "request")}, cancellationToken: cancellationToken);
@@ -1030,7 +1034,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 parameters:
                 [
                     ParameterDeclaration(deleteDto.Name, "request", true) ,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
@@ -1051,7 +1055,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 parameters:
                 [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({entity.WhereRule(uniqueFields)}, cancellationToken);
@@ -1070,7 +1074,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     await _unitOfWork.{entity.Name.Pluralize()}.RestoreAndSaveAsync({entity.WhereRule(uniqueFields)}, cancellationToken);
@@ -1089,7 +1093,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<PaginationResponse<{reportDto.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.PaginationAsync<{reportDto.Name}>(
@@ -1110,7 +1114,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<PaginationResponse<{entity.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.PaginationAsync(
@@ -1132,7 +1136,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<DatatableResponseClientSide<{reportDto.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableClientSideAsync<{reportDto.Name}>(
@@ -1150,7 +1154,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<DatatableResponseServerSide<{reportDto.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableServerSideAsync<{reportDto.Name}>(
@@ -1171,7 +1175,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<DatatableResponseClientSide<{entity.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableClientSideAsync(
@@ -1187,7 +1191,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 returnType: $"Task<Result<DatatableResponseServerSide<{entity.Name}>>>",
                 parameters: [
                     ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", false)
+                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableServerSideAsync(

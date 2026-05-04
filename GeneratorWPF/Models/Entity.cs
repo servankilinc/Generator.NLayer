@@ -44,7 +44,8 @@ namespace GeneratorWPF.Models
         
         public string GetConstraintRule()
         {
-            return String.Join("/", Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).Select(f => $"{f.Name.ToCamelCase()}:{f.GetMapedTypeName().ToLower()}"));
+            // ex: return {blogId:guid}/{userId:guid}
+            return String.Join("/", Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).Select(f => $"{{{f.Name.ToCamelCase()}:{f.GetMapedTypeName().ToLower()}}}"));
         }
 
         public string WhereRule(List<Field> uniqueFields, string? sourceName = null)

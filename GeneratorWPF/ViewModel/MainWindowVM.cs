@@ -53,11 +53,6 @@ namespace GeneratorWPF.ViewModel
 
             ToProjectsCommand = new RellayCommand(obj =>
             {
-                if (StateStatics.CurrentProject == default)
-                {
-                    MessageBox.Show("Please Firstly Select a Project!", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
                 Navigation.NavigateTo<EntranceVM>();
             });
 

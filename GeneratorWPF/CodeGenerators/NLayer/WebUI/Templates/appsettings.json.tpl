@@ -14,7 +14,7 @@
   },
   "LocalizationSettings": {
     "DefaultLanguage": "tr-TR",
-    "AvailableLanugages": [
+    "AvailableLanguages": [
       "tr-TR",
       "en-US"
     ]

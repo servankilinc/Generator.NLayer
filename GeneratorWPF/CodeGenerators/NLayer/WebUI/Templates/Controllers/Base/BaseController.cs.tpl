@@ -79,7 +79,7 @@ public abstract class BaseController : Controller
     }
 
 
-    private void LogFailedProcess(Core.Utils.ResultPattern.IResult result)
+    private void LogFailedProcess({{ core_project_name }}.Utils.ResultPattern.IResult result)
     {
         if (result.Error == null) return;
 

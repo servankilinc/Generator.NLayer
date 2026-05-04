@@ -1,4 +1,4 @@
-﻿@using {{ webui_project_name }}.Models.Auth
+@using {{ webui_project_name }}.Models.Auth
 @model LoginRequest
 @{
     Layout = "_LayoutBase";
@@ -53,15 +53,26 @@
 
 
                     <div class="fv-row mb-8">
-                        <label asp-for="Email" class="form-label">Email</label>
-                        <input asp-for="Email" class="form-control bg-transparent" placeholder="Email" autofocus />
-                        <span asp-validation-for="Email" class="form_validation_feedback"></span>
-                    </div>
-
-                    <div class="fv-row mb-8">
-                        <label asp-for="UserName" class="form-label">User Name</label>
-                        <input asp-for="UserName" class="form-control bg-transparent" placeholder="User Name" autofocus />
-                        <span asp-validation-for="UserName" class="form_validation_feedback"></span>
+                        <ul class="nav nav-tabs nav-line-tabs mb-5 fs-6">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" href="#login_email_tab">Email</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#login_username_tab">User Name</a>
+                            </li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="login_email_tab">
+                                <label asp-for="Email" class="form-label">Email</label>
+                                <input asp-for="Email" class="form-control bg-transparent" placeholder="Email" autofocus />
+                                <span asp-validation-for="Email" class="form_validation_feedback"></span>
+                            </div>
+                            <div class="tab-pane fade" id="login_username_tab">
+                                <label asp-for="UserName" class="form-label">User Name</label>
+                                <input asp-for="UserName" class="form-control bg-transparent" placeholder="User Name" />
+                                <span asp-validation-for="UserName" class="form_validation_feedback"></span>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="fv-row mb-3">
@@ -69,10 +80,6 @@
                         <input asp-for="Password" type="password" class="form-control bg-transparent" placeholder="Password" autocomplete="off" />
                         <span asp-validation-for="Password" class="form_validation_feedback"></span>
                     </div>
-					
-					<div class="separator separator-content my-14">
-						<span class="w-125px text-gray-500 fw-semibold fs-7">Or with email</span>
-					</div>
 
                     <div class="fv-row mb-8">
                         <div class="form-check mb-0">
@@ -160,3 +167,20 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (tab) {
+            tab.addEventListener('shown.bs.tab', function (e) {
+                var target = e.target.getAttribute('href');
+                if (target === '#login_email_tab') {
+                    document.querySelector('#login_username_tab input')?.setAttribute('value', '');
+                    document.querySelector('#login_username_tab input').value = '';
+                } else if (target === '#login_username_tab') {
+                    document.querySelector('#login_email_tab input')?.setAttribute('value', '');
+                    document.querySelector('#login_email_tab input').value = '';
+                }
+            });
+        });
+    });
+</script>

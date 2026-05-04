@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FluentValidation;
 using {{ model_project_name }}.Entities;
 
@@ -30,7 +30,7 @@ public class SignUpRequestMappingProfile : Profile
 {
     public SignUpRequestMappingProfile()
     {
-        CreateMap<SignUpRequest, User>()
+        CreateMap<SignUpRequest, {{ identity_user_type }}>()
             .ForMember(dest => dest.Email, opt => opt.MapFrom(src => src.Email))
             .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.UserName))
             .ForAllMembers(opt => opt.Condition((src, dest, srcMember, destMember) => !Equals(srcMember, destMember)));

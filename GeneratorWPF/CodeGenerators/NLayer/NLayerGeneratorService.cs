@@ -169,23 +169,23 @@ public class NLayerGeneratorService
 
             var nLayerBusinessService = new NLayerBusinessGenerator(_appSetting);
 
-            // 1. Create Core Class Library if not exists
-            log(nLayerBusinessService.CreateClassLibrearyProject(_appSetting.BusinessLayerProjectName, referances: [$"../{_appSetting.DataAccessLayerProjectName}/{_appSetting.DataAccessLayerProjectName}.csproj"]));
+            //// 1. Create Core Class Library if not exists
+            //log(nLayerBusinessService.CreateClassLibrearyProject(_appSetting.BusinessLayerProjectName, referances: [$"../{_appSetting.DataAccessLayerProjectName}/{_appSetting.DataAccessLayerProjectName}.csproj"]));
 
-            // 2. Static Files
-            log(nLayerBusinessService.GenerateStaticFiles("Business", _appSetting.BusinessLayerProjectName, new
-            {
-                identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
-            }));
+            //// 2. Static Files
+            //log(nLayerBusinessService.GenerateStaticFiles("Business", _appSetting.BusinessLayerProjectName, new
+            //{
+            //    identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
+            //}));
 
             // 3. Mappings
             log(nLayerBusinessService.GenerateMappings());
 
-            // 5. Concretes
-            log(nLayerBusinessService.GeneraterService());
+            //// 5. Concretes
+            //log(nLayerBusinessService.GeneraterService());
 
-            // 6. Service Registrations
-            log(nLayerBusinessService.GenerateServiceRegistrations());
+            //// 6. Service Registrations
+            //log(nLayerBusinessService.GenerateServiceRegistrations());
 
             return true;
         }
@@ -212,7 +212,7 @@ public class NLayerGeneratorService
             log(nLayerAPIService.AddPackage("Microsoft.AspNetCore.Authentication.JwtBearer --version 10.0.4", _appSetting.WebAPILayerProjectName));
             log(nLayerAPIService.AddPackage("Microsoft.AspNetCore.OpenApi --version 10.0.4", _appSetting.WebAPILayerProjectName));
             log(nLayerAPIService.AddPackage("Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.WebAPILayerProjectName));
-            log(nLayerAPIService.AddPackage("Scalar.AspNetCore--version 2.14.1", _appSetting.WebAPILayerProjectName));
+            log(nLayerAPIService.AddPackage("Scalar.AspNetCore --version 2.14.1", _appSetting.WebAPILayerProjectName));
 
             // 3. Static Files
             log(nLayerAPIService.GenerateStaticFiles("API", _appSetting.WebAPILayerProjectName, new
@@ -243,7 +243,6 @@ public class NLayerGeneratorService
                 throw new Exception("App Settings Not Completted To Generate!");
 
             var nLayerWebUIService = new NLayerWebUIGenerator(_appSetting);
-             
 
             // 1. Create Project if not exists
             log(nLayerWebUIService.CreateProject());
@@ -253,34 +252,28 @@ public class NLayerGeneratorService
             log(nLayerWebUIService.AddPackage("Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation --version 10.0.4", _appSetting.WebUILayerProjectName));
             log(nLayerWebUIService.AddPackage("Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.WebUILayerProjectName));
 
-            // 3. Utils =>   => GetIdentityRegistrationCode
+            // 3. Utils
             log(nLayerWebUIService.GenerateStaticFiles("WebUI", _appSetting.WebUILayerProjectName, new
             {
                 identity_web_ui_registration_code = nLayerWebUIService.GetIdentityRegistrationCode(),
                 db_connection_name = _appSetting.DBConnectionString,
                 identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
             }));
-             
-            // 5. Side Menu ViewComponent
+
+            // 4. Side Menu ViewComponent
             log(nLayerWebUIService.GenerateSideMenuViewComponent());
 
-            // 6. wwwroot
-            log(nLayerWebUIService.Generate_wwwroot(solutionPath));
+            // 5. ViewModels
+            log(nLayerWebUIService.GenerateViewModels());
 
-            // 7. ViewModels
-            log(nLayerWebUIService.GenerateViewModels(solutionPath));
+            // 6. Controllers
+            log(nLayerWebUIService.GenerateControllers());
 
-            // 8. Program.cs
-            log(nLayerWebUIService.GenerateProgramCs(solutionPath));
+            // 7. Views
+            log(nLayerWebUIService.GenerateViews());
 
-            // 9. AppSettings.json
-            log(nLayerWebUIService.GenerateAppSettings(solutionPath));
-
-            // 10. Controllers
-            log(nLayerWebUIService.GenerateControllers(solutionPath));
-
-            // 11. Views
-            log(nLayerWebUIService.GenerateViews(solutionPath));
+            // 8. wwwroot
+            log(nLayerWebUIService.Copywwwroot());
 
             return true;
         }

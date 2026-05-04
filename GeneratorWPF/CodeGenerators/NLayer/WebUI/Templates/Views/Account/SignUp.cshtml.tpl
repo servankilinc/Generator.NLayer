@@ -1,4 +1,5 @@
-﻿@model {{ webui_project_name }}.Models.Auth.SignUpRequest
+@using {{ webui_project_name }}.Models.Auth
+@model SignUpRequest
 @{
     Layout = "_LayoutBase";
     ViewData["Title"] = "SignUp";
@@ -65,7 +66,7 @@
 
                     <div class="fv-row mb-8">
                         <label asp-for="Email" class="form-label">Email</label>
-                        <input asp-for="Email" class="form-control bg-transparent" placeholder="Email" autofocus />
+                        <input asp-for="Email" class="form-control bg-transparent" placeholder="Email" type="email" autofocus />
                         <span asp-validation-for="Email" class="form_validation_feedback"></span>
                     </div>
 

@@ -86,7 +86,7 @@ namespace GeneratorWPF.ViewModel._Dto.Partial
                 DtoFields.Add(new DtoFieldCreateDto(_fieldRepository, _relationRepository)
                 {
                     Name = "New Field",
-                    SourceFieldId = DtoToCreate.RelatedEntityId,
+                    SourceFieldId = default,
                     IsRequired = true,
                     IsList = false
                 });

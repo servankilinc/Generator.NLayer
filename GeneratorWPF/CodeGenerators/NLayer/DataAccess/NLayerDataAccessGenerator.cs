@@ -43,17 +43,61 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         if (_appSetting.IsThereIdentity)
         {
-            results.Add(AddFile(folderPathAbstract, "IRefreshTokenRepository.cs", IRepository("RefreshToken")));
-            results.Add(AddFile(folderPathConcrete, "RefreshTokenRepository.cs", Repository("RefreshToken")));
+            var abstractRefreshToeknService = IRepository(
+                entityName: "RefreshToken",
+                methods: [
+                    MethodDeclaration(
+                        name: "RevokeDeviceRefreshTokens",
+                        returnType: "void",
+                        parameters: [ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true)],
+                        isThereBody: false
+                    ),
+                    MethodDeclaration(
+                        name: "RevokeDeviceRefreshTokensAsync",
+                        returnType: "Task",
+                        parameters: [
+                            ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true),
+                            ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                        ],
+                        isThereBody: false
+                    )
+                ]
+            );
+
+            var concreteRefreshToeknService = Repository(
+                entityName: "RefreshToken",
+                methods: [
+                    MethodDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword],
+                        name: "RevokeDeviceRefreshTokens",
+                        returnType: "void",
+                        parameters: [ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true)],
+                        body: "_context.RefreshTokens.Where(where).ExecuteUpdateAsync(s => s.SetProperty(rt => rt.IsRevoked, true));"
+                    ),
+                    MethodDeclaration(
+                        modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
+                        name: "RevokeDeviceRefreshTokensAsync",
+                        returnType: "Task",
+                        parameters: [
+                            ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true),
+                            ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                        ],
+                        body: "await _context.RefreshTokens.Where(where).ExecuteUpdateAsync(s => s.SetProperty(rt => rt.IsRevoked, true), cancellationToken);"
+                    )
+                ]
+            );
+            results.Add(AddFile(folderPathAbstract, "IRefreshTokenRepository.cs", abstractRefreshToeknService));
+            results.Add(AddFile(folderPathConcrete, "RefreshTokenRepository.cs", concreteRefreshToeknService));
         }
 
         return string.Join("\n", results);
     }
 
-    private string IRepository(string entityName)
+    private string IRepository(string entityName, MethodDeclarationSyntax[]? methods = null)
     {
         return CompilationUnit(
             usings: [
+                "System.Linq.Expressions",
                 $"{_appSetting.DataAccessLayerProjectName}.Repository",
                 $"{_appSetting.ModelLayerProjectName}.Entities"
             ],
@@ -66,17 +110,20 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                         baseTypes: [
                             SyntaxFactory.ParseTypeName($"IRepository<{entityName}>"),
                             SyntaxFactory.ParseTypeName($"IRepositoryAsync<{entityName}>")
-                        ]
+                        ],
+                        members: methods != null ? methods : []
                     )
                 ]
             )
         ).ToFullString();
     }
 
-    private string Repository(string entityName)
+    private string Repository(string entityName, MethodDeclarationSyntax[]? methods = null)
     {
         return CompilationUnit(
             usings: [
+                "System.Linq.Expressions",
+                "Microsoft.EntityFrameworkCore",
                 $"{_appSetting.DataAccessLayerProjectName}.Abstract",
                 $"{_appSetting.DataAccessLayerProjectName}.Contexts",
                 $"{_appSetting.DataAccessLayerProjectName}.Repository",
@@ -98,7 +145,8 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                                 name: $"{entityName}Repository",
                                 parameters: [ParameterDeclaration("AppDbContext", "context")],
                                 baseArgs: ["context"]
-                            )
+                            ),
+                            ..methods ?? []
                         ]
                     )
                 ]
@@ -126,13 +174,13 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
     {
         var properties = new List<PropertyDeclarationSyntax>();
         foreach (var entity in entities)
-            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
+            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true, nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration), AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, [SyntaxKind.PrivateKeyword])]));
         if (_appSetting.IsThereIdentity)
-            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
+            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true, nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration), AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, [SyntaxKind.PrivateKeyword])]));
 
         var fileds = new List<FieldDeclarationSyntax>()
         {
-            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction"),
+            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction", nullable : true),
             FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context")
         };
 
@@ -201,14 +249,14 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "SaveChangesAsync",
                 returnType: "Task<int>",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: "return await _context.SaveChangesAsync(cancellationToken);"
             ),
             MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "BeginTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: @"
                     if (_transaction != null) throw new InvalidOperationException(""Transaction already started for begin transaction."");
                     _transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
@@ -218,7 +266,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "CommitTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: @"
                     if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for commit."");
                     await _transaction.CommitAsync(cancellationToken);
@@ -230,7 +278,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "RollbackTransactionAsync",
                 returnType : "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: @"
                     if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for rollback."");
                     await _transaction.RollbackAsync(cancellationToken);
@@ -300,9 +348,9 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
     {
         var properties = new List<PropertyDeclarationSyntax>();
         foreach (var entity in entities)
-            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true));
+            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), required: true, modifiers: [], nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)]));
         if (_appSetting.IsThereIdentity)
-            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true));
+            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", required: true, modifiers: [], nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)]));
 
         var abstractMethods = new List<MethodDeclarationSyntax>()
         {
@@ -314,25 +362,25 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             MethodDeclaration(
                 name: "SaveChangesAsync",
                 returnType: "Task<int>",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             ),
             MethodDeclaration(
                 name: "BeginTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             ),
             MethodDeclaration(
                 name: "CommitTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             ),
             MethodDeclaration(
                 name: "RollbackTransactionAsync",
                 returnType : "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", false)],
+                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             )
         };
@@ -375,13 +423,13 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         #region DbSets
         var dbSets = entities.Select(e =>
             _appSetting.IsThereIdentity && ((e.Id == _appSetting.UserEntityId && e.Name == "User") || (e.Id == _appSetting.RoleEntityId && e.Name == "Role")) ?
-                PropertyDeclaration($"override DbSet<{e.Name}>", e.Name.Pluralize(), true) :
-                PropertyDeclaration($"DbSet<{e.Name}>", e.Name.Pluralize(), true)
+                PropertyDeclaration($"override DbSet<{e.Name}>", e.Name.Pluralize(), true, nullableDecleration: false) :
+                PropertyDeclaration($"DbSet<{e.Name}>", e.Name.Pluralize(), true, nullableDecleration: false)
         ).ToList();
         if (_appSetting.IsThereIdentity)
-            dbSets.Add(PropertyDeclaration("DbSet<RefreshToken>", "RefreshTokens", true));
-        dbSets.Add(PropertyDeclaration("DbSet<Log>", "Logs", true));
-        dbSets.Add(PropertyDeclaration("DbSet<Archive>", "Archives", true));
+            dbSets.Add(PropertyDeclaration("DbSet<RefreshToken>", "RefreshTokens", true, nullableDecleration: false));
+        dbSets.Add(PropertyDeclaration("DbSet<Log>", "Logs", true, nullableDecleration: false));
+        dbSets.Add(PropertyDeclaration("DbSet<Archive>", "Archives", true, nullableDecleration: false));
         #endregion
 
         #region Model Builders
@@ -501,41 +549,41 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
             if (!_appSetting.IsThereRole)
             {
-                Dictionary<string, string> defaultRoles = new Dictionary<string, string>
+                List<(string roleName, string roleId, string concurrencyStamp)> defaultRoles = new List<(string roleName, string roleId, string concurrencyStamp)>
                 {
+                    new ()
                     {
-                        "User",
-                        IdentityKeyType == "int" ? "1" :
-                            IdentityKeyType == "string" ? "b370875e-34cd-4b79-891c-93ae38f99d11" :
-                            "new Guid(\"b370875e-34cd-4b79-891c-93ae38f99d11\")"
+                        roleName = "User",
+                        roleId = IdentityKeyType == "int" ? "1" : IdentityKeyType == "string" ? "\"b370875e-34cd-4b79-891c-93ae38f99d11\"" : "new Guid(\"b370875e-34cd-4b79-891c-93ae38f99d11\")",
+                        concurrencyStamp = IdentityKeyType == "int" ? "\"1\"" : IdentityKeyType == "string" ? "\"b370875e-34cd-4b79-891c-93ae38f99d11\"" : "new Guid(\"b370875e-34cd-4b79-891c-93ae38f99d11\").ToString()"
                     },
+                    new ()
                     {
-                        "Manager",
-                        IdentityKeyType == "int" ? "2" :
-                            IdentityKeyType == "string" ? "cd6040ef-dacc-4678-9a85-154f12581cff" :
-                                "new Guid(\"cd6040ef-dacc-4678-9a85-154f12581cff\")"
+                        roleName = "Manager",
+                        roleId = IdentityKeyType == "int" ? "2" : IdentityKeyType == "string" ? "\"cd6040ef-dacc-4678-9a85-154f12581cff\"" : "new Guid(\"cd6040ef-dacc-4678-9a85-154f12581cff\")",
+                        concurrencyStamp = IdentityKeyType == "int" ? "\"2\"" : IdentityKeyType == "string" ? "\"cd6040ef-dacc-4678-9a85-154f12581cff\"" : "new Guid(\"cd6040ef-dacc-4678-9a85-154f12581cff\").ToString()"
                     },
+                    new ()
                     {
-                        "Admin",
-                        IdentityKeyType == "int" ? "3" :
-                            IdentityKeyType == "string" ? "7138ec51-4f9e-4afd-b61b-5a9a4584f5da" :
-                                "new Guid(\"7138ec51-4f9e-4afd-b61b-5a9a4584f5da\")"
+                        roleName = "Admin",
+                        roleId = IdentityKeyType == "int" ? "3" : IdentityKeyType == "string" ? "\"7138ec51-4f9e-4afd-b61b-5a9a4584f5da\"" : "new Guid(\"7138ec51-4f9e-4afd-b61b-5a9a4584f5da\")",
+                        concurrencyStamp = IdentityKeyType == "int" ? "\"3\"" : IdentityKeyType == "string" ? "\"7138ec51-4f9e-4afd-b61b-5a9a4584f5da\"" : "new Guid(\"7138ec51-4f9e-4afd-b61b-5a9a4584f5da\").ToString()"
                     },
+                    new ()
                     {
-                        "Owner",
-                        IdentityKeyType == "int" ? "4" :
-                            IdentityKeyType == "string" ? "1f20c152-530e-4064-a39c-bbbed341fe84" :
-                                "new Guid(\"1f20c152-530e-4064-a39c-bbbed341fe84\")"
+                        roleName = "Owner",
+                        roleId = IdentityKeyType == "int" ? "4" : IdentityKeyType == "string" ? "\"1f20c152-530e-4064-a39c-bbbed341fe84\"" : "new Guid(\"1f20c152-530e-4064-a39c-bbbed341fe84\")",
+                        concurrencyStamp = IdentityKeyType == "int" ? "\"4\"" : IdentityKeyType == "string" ? "\"1f20c152-530e-4064-a39c-bbbed341fe84\"" : "new Guid(\"1f20c152-530e-4064-a39c-bbbed341fe84\").ToString()"
                     }
                 };
 
                 string defaultRolesString = string.Join(",\n", defaultRoles.Select(r =>
                     $@"new IdentityRole<{IdentityKeyType}>
                     {{
-                        Id = {r.Value},
-                        Name = ""{r.Key}"",
-                        NormalizedName = ""{r.Key.ToUpperInvariant()}"",
-                        ConcurrencyStamp = ""{r.Value}.ToString()""
+                        Id = {r.roleId},
+                        Name = ""{r.roleName}"",
+                        NormalizedName = ""{r.roleName.ToUpperInvariant()}"",
+                        ConcurrencyStamp = {r.concurrencyStamp}
                     }}"
                 ));
 

@@ -6,9 +6,14 @@ namespace GeneratorWPF.Context
 {
     public class LocalContext : DbContext
     {
+        private static bool _migrated = false;
         public LocalContext()
         {
-            this.Database.Migrate();
+            if (!_migrated)
+            {
+                _migrated = true;
+                this.Database.Migrate();
+            }
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

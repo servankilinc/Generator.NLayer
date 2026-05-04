@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using AutoMapper;
@@ -105,8 +105,7 @@ public class AccountController : BaseController
             return View(signUpRequest);
         }
 
-        var user = _mapper.Map<User>(signUpRequest);
-        user.UserName = Guid.NewGuid().ToString();
+        var user = _mapper.Map<{{identity_user_type}}>(signUpRequest);
 
         var result = await _userManager.CreateAsync(user, signUpRequest.Password);
         if (!result.Succeeded)

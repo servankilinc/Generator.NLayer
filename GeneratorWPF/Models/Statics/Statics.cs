@@ -6,6 +6,14 @@ public static class Statics
         "int", "long", "float", "double", "bool", "char", "byte", "Guid" // "DateTime", "DateOnly", "TimeOnly"
     };
 
+    public static bool IsReferanceTypeNullable(string type)
+    {
+        if (type == "DateTime" || type == "DateOnly" || type == "TimeOnly")
+            return false;
+        return true;
+    }
+
+
     public const string IEntity = "IEntity";
     public const string ISoftDeletableEntity = "ISoftDeletableEntity";
     public const string IArchivableEntity = "IArchivableEntity";

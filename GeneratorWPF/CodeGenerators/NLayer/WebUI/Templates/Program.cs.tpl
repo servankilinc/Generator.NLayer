@@ -119,8 +119,6 @@ app.UseMiddleware<ExceptionHandleMiddleware>();
 app.UseStatusCodePagesWithReExecute("/error/{0}");
 #endregion
 
-app.UseStaticFiles();
-
 
 if (app.Environment.IsDevelopment())
 {

@@ -430,16 +430,12 @@ public class NLayerModelGenerator : NLayerGeneratorBase
 
             if (dtoField.SourceField.IsList)
                 fieldTypeName = $"List<{fieldTypeName}>";
-            if (!dtoField.SourceField.IsRequired)
-                fieldTypeName = $"{fieldTypeName}?";
-            if (dtoField.IsList)
-            {
-                fieldTypeName = $"List<{fieldTypeName}>";
-                if (!dtoField.SourceField.IsRequired)
-                    fieldTypeName = $"{fieldTypeName}?";
-            }
-            //if (!dtoField.IsRequired)
+            //if (!dtoField.SourceField.IsRequired)
             //    fieldTypeName = $"{fieldTypeName}?";
+            if (dtoField.IsList)
+                fieldTypeName = $"List<{fieldTypeName}>";
+            if (!dtoField.IsRequired)
+                fieldTypeName = $"{fieldTypeName}?";
 
             properties.Add(PropertyDeclaration(fieldTypeName, dtoField.Name, dtoField.IsRequired));
         }

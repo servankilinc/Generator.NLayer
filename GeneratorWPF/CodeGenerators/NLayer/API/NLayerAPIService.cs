@@ -134,7 +134,7 @@ public class NLayerAPIService : NLayerGeneratorBase
 
         #region GET
         methods.Add(MethodDeclaration(
-            attributes: [GenerateHttpAttribute("HttpGet", $"{{{entity.GetConstraintRule()}}}")],
+            attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Get",
             returnType: "Task<IActionResult>",
@@ -155,7 +155,7 @@ public class NLayerAPIService : NLayerGeneratorBase
             string methodName = dto.ServiceGetMethodName(entity);
 
             methods.Add(MethodDeclaration(
-                attributes: [GenerateHttpAttribute("HttpGet", $"{{{entity.GetConstraintRule()}}}/{reqKind}")],
+                attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}/{reqKind}")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.PresentationLayerGetMethodName(entity),
                 returnType: "Task<IActionResult>",
@@ -229,7 +229,7 @@ public class NLayerAPIService : NLayerGeneratorBase
         var updateDto = dtos.FirstOrDefault(f => f.Id == entity.UpdateDtoId);
 
         methods.Add(MethodDeclaration(
-            attributes: [GenerateHttpAttribute("HttpGet", "update")],
+            attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}/update")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Update",
             returnType: "Task<IActionResult>",
@@ -248,7 +248,7 @@ public class NLayerAPIService : NLayerGeneratorBase
             name: "Update",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true)
+                ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.UpdateAsync(request);
@@ -279,7 +279,7 @@ public class NLayerAPIService : NLayerGeneratorBase
         else
         {
             methods.Add(MethodDeclaration(
-                attributes: [GenerateHttpAttribute("HttpDelete", $"{{{entity.GetConstraintRule()}}}")],
+                attributes: [GenerateHttpAttribute("HttpDelete", $"{entity.GetConstraintRule()}")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Delete",
                 returnType: "Task<IActionResult>",
@@ -299,7 +299,7 @@ public class NLayerAPIService : NLayerGeneratorBase
         if (entity.SoftDeletable)
         {
             methods.Add(MethodDeclaration(
-                attributes: [GenerateHttpAttribute("HttpGet", $"{{{entity.GetConstraintRule()}}}/restore")],
+                attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}/restore")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Restore",
                 returnType: "Task<IActionResult>",

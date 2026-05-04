@@ -40,7 +40,7 @@ namespace GeneratorWPF.Models
                 roleEntity = entityRepository.Get(f => f.Id == this.RoleEntityId);
 
                 var uniqueFields = fieldRepository.GetAll(f => f.EntityId == this.RoleEntityId && f.IsUnique);
-                if (uniqueFields != null)
+                if (uniqueFields != null && uniqueFields.Any())
                 {
                     IdentityKeyType = uniqueFields.First().GetMapedTypeName();
                 }
