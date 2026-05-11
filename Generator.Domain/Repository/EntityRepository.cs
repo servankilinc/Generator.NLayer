@@ -1,8 +1,8 @@
 ﻿using Generator.Domain.Context;
-using Generator.Domain.Dtos.Entity;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Core;
 using Microsoft.EntityFrameworkCore;
+using Generator.Domain.Core.Dtos.Entity;
 
 namespace Generator.Domain.Repository;
 
@@ -25,7 +25,7 @@ public class EntityRepository : EFRepositoryBase<Entity>
             };
             var insertedEntity = _context.Set<Entity>().Add(entityToInsert).Entity;
             _context.SaveChanges();
-            
+
             // Add Fields 
             foreach (var fieldCreateDto in createDto.Fields)
             {
@@ -46,7 +46,7 @@ public class EntityRepository : EFRepositoryBase<Entity>
             _context.Set<FieldType>().Add(new FieldType
             {
                 Name = insertedEntity.Name,
-                SourceTypeId = (int)FieldTypeSourceEnums.Entity,
+                SourceTypeId = (int)Enums.FieldTypeSourceEnums.Entity,
             });
             _context.SaveChanges();
 
@@ -55,17 +55,17 @@ public class EntityRepository : EFRepositoryBase<Entity>
                 new Service
                 {
                     RelatedEntityId = insertedEntity.Id,
-                    ServiceLayerId = (int)ServiceLayerEnums.DataAccess
+                    ServiceLayerId = (int)Enums.ServiceLayerEnums.DataAccess
                 },
                 new Service
                 {
                     RelatedEntityId = insertedEntity.Id,
-                    ServiceLayerId = (int)ServiceLayerEnums.Business
+                    ServiceLayerId = (int)Enums.ServiceLayerEnums.Business
                 },
                 new Service
                 {
                     RelatedEntityId = insertedEntity.Id,
-                    ServiceLayerId = (int)ServiceLayerEnums.Presentation
+                    ServiceLayerId = (int)Enums.ServiceLayerEnums.Presentation
                 },
             ]);
             _context.SaveChanges();
@@ -90,7 +90,7 @@ public class EntityRepository : EFRepositoryBase<Entity>
             .Include(e => e.ReportDto)
             .Include(e => e.BasicResponseDto)
             .Include(e => e.DetailResponseDto)
-            .Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Base))
+            .Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Base))
                 .ThenInclude(f => f.FieldType);
 
         return result.ToList();
@@ -112,10 +112,10 @@ public class EntityRepository : EFRepositoryBase<Entity>
         existData.ReportDtoId = updateDto.ReportDtoId;
         existData.BasicResponseDtoId = updateDto.BasicResponseDtoId;
         existData.DetailResponseDtoId = updateDto.DetailResponseDtoId;
-        
+
         existData.SoftDeletable = updateDto.SoftDeletable;
-        existData.Auditable  = updateDto.Auditable;
-        existData.Archivable  = updateDto.Archivable;
+        existData.Auditable = updateDto.Auditable;
+        existData.Archivable = updateDto.Archivable;
 
         context.Entities.Update(existData);
         context.SaveChanges();

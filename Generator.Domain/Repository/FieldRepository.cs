@@ -1,7 +1,7 @@
 ﻿using Generator.Domain.Context;
-using Generator.Domain.Dtos.Field;
 using Generator.Domain.Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using Generator.Domain.Core.Dtos.Field;
 
 namespace Generator.Domain.Repository;
 
@@ -13,7 +13,7 @@ public class FieldRepository : EFRepositoryBase<Field>
 
         var existData = context.Fields.FirstOrDefault(f => f.Id == updateDto.Id);
         if (existData == null) throw new Exception("Data to update not found");
-          
+
         existData.FieldTypeId = updateDto.FieldTypeId;
         existData.Name = updateDto.Name;
         existData.IsRequired = updateDto.IsRequired;

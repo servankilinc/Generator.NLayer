@@ -1,8 +1,8 @@
 ﻿using Generator.Domain.Context;
-using Generator.Domain.Dtos.Relation;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Core;
 using Microsoft.EntityFrameworkCore;
+using Generator.Domain.Core.Dtos.Relation;
 
 namespace Generator.Domain.Repository;
 

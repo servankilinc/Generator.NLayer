@@ -1,11 +1,10 @@
 ﻿using Generator.Domain.Context;
-using Generator.Domain.Dtos.Dto;
-using Generator.Domain.Dtos.DtoField;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Core;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
-using Generator.Domain.Core.Entities;
+using Generator.Domain.Core.Dtos.Dto;
+using Generator.Domain.Core.Dtos.DtoField;
 
 namespace Generator.Domain.Repository;
 
@@ -163,7 +162,7 @@ public class DtoRepository : EFRepositoryBase<Dto>
             var insertedFieldType = _context.FieldTypes.Add(new FieldType
             {
                 Name = insertedDto.Name,
-                SourceTypeId = (int)FieldTypeSourceEnums.Dto,
+                SourceTypeId = (int)Enums.FieldTypeSourceEnums.Dto,
             }).Entity;
             _context.SaveChanges();
 
@@ -176,20 +175,20 @@ public class DtoRepository : EFRepositoryBase<Dto>
             }).Entity;
             _context.SaveChanges();
 
-            // Insert DtoFields
-            if (createDto.DtoFields != null && createDto.DtoFields.Any())
-            {
-                foreach (var sourceField in createDto.DtoFields)
-                {
-                    _context.DtoFields.Add(new DtoField
-                    {
-                        DtoId = insertedDto.Id,
-                        SourceFieldId = sourceField.SourceFieldId,
-                        Name = sourceField.Name,
-                    });
-                }
-                _context.SaveChanges();
-            }
+            //// Insert DtoFields
+            //if (createDto.DtoFields != null && createDto.DtoFields.Any())
+            //{
+            //    foreach (var sourceField in createDto.DtoFields)
+            //    {
+            //        _context.DtoFields.Add(new DtoField
+            //        {
+            //            DtoId = insertedDto.Id,
+            //            SourceFieldId = sourceField.SourceFieldId,
+            //            Name = sourceField.Name,
+            //        });
+            //    }
+            //    _context.SaveChanges();
+            //}
 
             transaction.Commit();
         }
@@ -209,7 +208,7 @@ public class DtoRepository : EFRepositoryBase<Dto>
         bool nameChanged = existData.Name != updateModel.Name;
         bool entityIdChanged = existData.RelatedEntityId != updateModel.RelatedEntityId;
 
-        FieldType? existFieldType = context.FieldTypes.FirstOrDefault(f => f.Name == existData.Name && f.SourceTypeId == (int)FieldTypeSourceEnums.Dto);
+        FieldType? existFieldType = context.FieldTypes.FirstOrDefault(f => f.Name == existData.Name && f.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto);
         Field? existField = context.Fields.FirstOrDefault(f => f.Name == existData.Name && f.EntityId == existData.RelatedEntityId);
         if (nameChanged)
         {
@@ -242,7 +241,7 @@ public class DtoRepository : EFRepositoryBase<Dto>
 
         if (dto == null) throw new Exception("Data not found!");
 
-        FieldType? fieldType = context.FieldTypes.FirstOrDefault(f => f.Name == dto.Name && f.SourceTypeId == (int)FieldTypeSourceEnums.Dto);
+        FieldType? fieldType = context.FieldTypes.FirstOrDefault(f => f.Name == dto.Name && f.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto);
         Field? field = context.Fields.FirstOrDefault(f => f.Name == dto.Name && f.EntityId == dto.RelatedEntityId);
 
         if (fieldType == null || field == null) throw new Exception("Related Data(s) not found!");

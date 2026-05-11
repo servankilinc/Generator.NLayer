@@ -113,85 +113,85 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
 
 
-    public void Add(DtoFieldCreateDto createDto)
-    {
-        using var context = new ProjectContext();
-        var transaction = context.Database.BeginTransaction();
-        try
-        {
-            var dtoField = new DtoField
-            {
-                DtoId = createDto.DtoId,
-                Name = createDto.Name,
-                SourceFieldId = createDto.SourceFieldId,
-                IsRequired = createDto.IsRequired,
-                IsList = createDto.IsList
-            };
-            context.Add(dtoField);
-            context.SaveChanges();
+    //public void Add(DtoFieldCreateDto createDto)
+    //{
+    //    using var context = new ProjectContext();
+    //    var transaction = context.Database.BeginTransaction();
+    //    try
+    //    {
+    //        var dtoField = new DtoField
+    //        {
+    //            DtoId = createDto.DtoId,
+    //            Name = createDto.Name,
+    //            SourceFieldId = createDto.SourceFieldId,
+    //            IsRequired = createDto.IsRequired,
+    //            IsList = createDto.IsList
+    //        };
+    //        context.Add(dtoField);
+    //        context.SaveChanges();
 
-            if((createDto.DtoRelatedEntityId != createDto.SourceEntityId) && createDto.DtoFieldRelations != null)
-            {
-                var rangeOfRelations = createDto.DtoFieldRelations.Select(d => new DtoFieldRelations
-                {
-                    DtoFieldId = dtoField.Id,
-                    RelationId = d.RelationId,
-                    SequenceNo = d.SequenceNo,
-                    Control = false
-                });
-                context.DtoFieldRelations.AddRange(rangeOfRelations);
-                context.SaveChanges();
-            }
-            transaction.Commit();
-        }
-        catch (Exception)
-        {
-            transaction.Rollback();
-        }
-    }
+    //        if((createDto.DtoRelatedEntityId != createDto.SourceEntityId) && createDto.DtoFieldRelations != null)
+    //        {
+    //            var rangeOfRelations = createDto.DtoFieldRelations.Select(d => new DtoFieldRelations
+    //            {
+    //                DtoFieldId = dtoField.Id,
+    //                RelationId = d.RelationId,
+    //                SequenceNo = d.SequenceNo,
+    //                Control = false
+    //            });
+    //            context.DtoFieldRelations.AddRange(rangeOfRelations);
+    //            context.SaveChanges();
+    //        }
+    //        transaction.Commit();
+    //    }
+    //    catch (Exception)
+    //    {
+    //        transaction.Rollback();
+    //    }
+    //}
 
-    public void Update(DtoFieldUpdateDto updateDto)
-    {
-        using var context = new ProjectContext();
-        var transaction = context.Database.BeginTransaction();
-        try
-        {
-            var existData = context.DtoFields.FirstOrDefault(f => f.Id == updateDto.Id);
-            if (existData == null) throw new Exception("Data to update not found!");
+    //public void Update(DtoFieldUpdateDto updateDto)
+    //{
+    //    using var context = new ProjectContext();
+    //    var transaction = context.Database.BeginTransaction();
+    //    try
+    //    {
+    //        var existData = context.DtoFields.FirstOrDefault(f => f.Id == updateDto.Id);
+    //        if (existData == null) throw new Exception("Data to update not found!");
 
-            existData.Name = updateDto.Name;
-            existData.SourceFieldId = updateDto.SourceFieldId;
-            existData.IsRequired = updateDto.IsRequired;
-            existData.IsList = updateDto.IsList;
-            context.Update(existData);
-            context.SaveChanges();
+    //        existData.Name = updateDto.Name;
+    //        existData.SourceFieldId = updateDto.SourceFieldId;
+    //        existData.IsRequired = updateDto.IsRequired;
+    //        existData.IsList = updateDto.IsList;
+    //        context.Update(existData);
+    //        context.SaveChanges();
 
-            if ((updateDto.DtoRelatedEntityId != updateDto.SourceEntityId) && updateDto.DtoFieldRelations != null)
-            {
-                var existDtoFieldRelations = context.DtoFieldRelations.Where(f => f.DtoFieldId == existData.Id);
-                if (existDtoFieldRelations != null && existDtoFieldRelations.Any())
-                {
-                    context.DtoFieldRelations.RemoveRange(existDtoFieldRelations);
-                    context.SaveChanges();
-                }
+    //        if ((updateDto.DtoRelatedEntityId != updateDto.SourceEntityId) && updateDto.DtoFieldRelations != null)
+    //        {
+    //            var existDtoFieldRelations = context.DtoFieldRelations.Where(f => f.DtoFieldId == existData.Id);
+    //            if (existDtoFieldRelations != null && existDtoFieldRelations.Any())
+    //            {
+    //                context.DtoFieldRelations.RemoveRange(existDtoFieldRelations);
+    //                context.SaveChanges();
+    //            }
                 
-                var rangeOfRelations = updateDto.DtoFieldRelations.Select(d => new DtoFieldRelations
-                {
-                    DtoFieldId = existData.Id,
-                    RelationId = d.RelationId,
-                    SequenceNo = d.SequenceNo,
-                    Control = false
-                });
-                context.DtoFieldRelations.AddRange(rangeOfRelations);
-                context.SaveChanges();
-            }
-            transaction.Commit();
-        }
-        catch (Exception)
-        {
-            transaction.Rollback();
-        }
-    }
+    //            var rangeOfRelations = updateDto.DtoFieldRelations.Select(d => new DtoFieldRelations
+    //            {
+    //                DtoFieldId = existData.Id,
+    //                RelationId = d.RelationId,
+    //                SequenceNo = d.SequenceNo,
+    //                Control = false
+    //            });
+    //            context.DtoFieldRelations.AddRange(rangeOfRelations);
+    //            context.SaveChanges();
+    //        }
+    //        transaction.Commit();
+    //    }
+    //    catch (Exception)
+    //    {
+    //        transaction.Rollback();
+    //    }
+    //}
 
     public void Delete(int id)
     {

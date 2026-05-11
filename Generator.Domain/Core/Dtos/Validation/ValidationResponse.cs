@@ -1,6 +1,4 @@
-﻿using Generator.Domain.Core.Entities;
-
-namespace Generator.Domain.Core.Dtos.Validation;
+﻿namespace Generator.Domain.Core.Dtos.Validation;
 
 public class ValidationResponse
 {
@@ -8,7 +6,7 @@ public class ValidationResponse
     public int DtoFieldId { get; set; }
     public string ValidatorTypeName { get; set; } = null!;
     public string? ErrorMessage { get; set; }
-    public virtual ICollection<ValidationParam>? ValidationParams { get; set; }
+    public virtual ICollection<Entities.ValidationParam>? ValidationParams { get; set; }
 
     // DtoField
     public int DtoId { get; set; }
