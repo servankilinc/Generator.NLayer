@@ -1,15 +1,36 @@
 ﻿using Generator.Domain.Context;
-using Generator.Domain.Core.Entities;
 using Generator.Domain.Core;
-using Microsoft.EntityFrameworkCore;
-using System.Linq.Expressions;
 using Generator.Domain.Core.Dtos.Dto;
 using Generator.Domain.Core.Dtos.DtoField;
+using Generator.Domain.Core.Dtos.Entity;
+using Generator.Domain.Core.Entities;
+using Generator.Domain.Repository.Base;
+using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 
 namespace Generator.Domain.Repository;
 
 public class DtoRepository : EFRepositoryBase<Dto>
 {
+    public DtoUpdateDto GetUpdateModel(int entityId)
+    {
+        using var context = new ProjectContext();
+
+        var existEntity = context.Dtos
+            .Select(e => new DtoUpdateDto
+            {
+                Id = e.Id,
+                Name = e.Name,
+                CrudTypeId = e.CrudTypeId,
+                RelatedEntityId = e.RelatedEntityId
+            })
+            .FirstOrDefault(f => f.Id == entityId);
+        if (existEntity == null)
+            throw new Exception("Data to update not found");
+
+        return existEntity;
+    }
+
     public DtoField GetDtoFieldByValidations(Expression<Func<DtoField, bool>> expresion)
     {
         using var context = new ProjectContext();
@@ -101,6 +122,7 @@ public class DtoRepository : EFRepositoryBase<Dto>
 
         var data = context.Dtos
             .Where(expresion)
+            .Where(expresion)
             .Include(i => i.RelatedEntity)
             .Include(i => i.CrudType)
             .Include(i => i.DtoFields)
@@ -111,7 +133,6 @@ public class DtoRepository : EFRepositoryBase<Dto>
                     .ThenInclude(sf => sf.Entity)
             .Include(i => i.DtoFields)
                 .ThenInclude(df => df.DtoFieldRelations)
-                    .ThenInclude(r => r.Relation)
             .AsNoTracking()
             .ToList();
 
@@ -127,17 +148,17 @@ public class DtoRepository : EFRepositoryBase<Dto>
                 Id = y.Id,
                 Name = y.Name,
                 DtoId = x.Id,
-                SourceFieldName = y.SourceField?.Name,
-                EntityName = y.SourceField?.Entity?.Name,
-                FieldTypeName = y.SourceField?.FieldType?.Name,
+                SourceFieldName = y.SourceField.Name,
+                EntityName = y.SourceField.Entity.Name,
+                FieldTypeName = y.SourceField.FieldType.Name,
                 IsRequired = y.IsRequired,
                 IsList = y.IsList,
-                IsSourceFromForeignEntity = x.RelatedEntityId != y.SourceField?.EntityId,
+                IsSourceFromForeignEntity = x.RelatedEntityId != y.SourceField.EntityId,
                 IsThereRelations = y.DtoFieldRelations != null && y.DtoFieldRelations.Any(),
                 DtoFieldRelationsPath =
                     y.DtoFieldRelations != null ?
                         string.Join(",\n", y.DtoFieldRelations.OrderBy(o => o.SequenceNo)
-                            .Select(dr => $"{dr.Relation?.PrimaryEntityVirPropName}.{dr.Relation?.ForeignEntityVirPropName}")) :
+                            .Select(dr => $"{dr.Relation.PrimaryEntityVirPropName}.{dr.Relation.ForeignEntityVirPropName}")) :
                         string.Empty
             }).ToList()
         }).ToList();
@@ -175,20 +196,30 @@ public class DtoRepository : EFRepositoryBase<Dto>
             }).Entity;
             _context.SaveChanges();
 
-            //// Insert DtoFields
-            //if (createDto.DtoFields != null && createDto.DtoFields.Any())
-            //{
-            //    foreach (var sourceField in createDto.DtoFields)
-            //    {
-            //        _context.DtoFields.Add(new DtoField
-            //        {
-            //            DtoId = insertedDto.Id,
-            //            SourceFieldId = sourceField.SourceFieldId,
-            //            Name = sourceField.Name,
-            //        });
-            //    }
-            //    _context.SaveChanges();
-            //}
+            // Insert DtoFields
+            if (createDto.DtoFields != null && createDto.DtoFields.Any())
+            {
+                foreach (var sourceField in createDto.DtoFields)
+                {
+                    var dtoField = _context.DtoFields.Add(new DtoField
+                    {
+                        DtoId = insertedDto.Id,
+                        SourceFieldId = sourceField.SourceFieldId,
+                        Name = sourceField.Name,
+                        IsRequired = sourceField.IsRequired,
+                        IsList = sourceField.IsList,
+                        DtoFieldRelations = (insertedDto.RelatedEntityId != sourceField.SourceEntityId) && sourceField.DtoFieldRelations != null && sourceField.DtoFieldRelations.Any() ?
+                            sourceField.DtoFieldRelations.Select(d => new DtoFieldRelations
+                            {
+                                RelationId = d.RelationId,
+                                SequenceNo = d.SequenceNo,
+                                Control = false
+                            }).ToList() : null
+                    });
+                }
+                _context.SaveChanges();
+
+            }
 
             transaction.Commit();
         }

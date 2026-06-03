@@ -8,7 +8,7 @@ public class LocalContext : DbContext
     private static bool _migrated = false;
     public LocalContext()
     {
-        if (!_migrated)
+        if (_migrated == false)
         {
             _migrated = true;
             this.Database.Migrate();

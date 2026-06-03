@@ -30,7 +30,6 @@ public class Entity : EntityBase
     public virtual Dto? DetailResponseDto { get; set; }
     public virtual ICollection<Field> Fields { get; set; } = null!;
     public virtual ICollection<Dto>? Dtos { get; set; }
-    public virtual ICollection<Service>? Services { get; set; }
     public virtual AppSetting? AsUserAppSetting { get; set; }
     public virtual AppSetting? AsRoleAppSetting { get; set; }
 

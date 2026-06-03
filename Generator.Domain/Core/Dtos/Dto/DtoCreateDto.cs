@@ -7,5 +7,5 @@ public class DtoCreateDto
     public string Name { get; set; } = null!;
     public int RelatedEntityId { get; set; }
     public int CrudTypeId { get; set; }
-    //public List<DtoFieldCreateDto>? DtoFields { get; set; }
+    public List<DtoFieldCreateDto>? DtoFields { get; set; }
 }

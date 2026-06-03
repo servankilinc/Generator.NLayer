@@ -1,8 +1,10 @@
 ﻿using Generator.Domain.Context;
-using Generator.Domain.Core.Entities;
 using Generator.Domain.Core;
-using Microsoft.EntityFrameworkCore;
 using Generator.Domain.Core.Dtos.Entity;
+using Generator.Domain.Core.Dtos.Field;
+using Generator.Domain.Core.Entities;
+using Generator.Domain.Repository.Base;
+using Microsoft.EntityFrameworkCore;
 
 namespace Generator.Domain.Repository;
 
@@ -50,26 +52,6 @@ public class EntityRepository : EFRepositoryBase<Entity>
             });
             _context.SaveChanges();
 
-            // Add Layers
-            _context.Set<Service>().AddRange([
-                new Service
-                {
-                    RelatedEntityId = insertedEntity.Id,
-                    ServiceLayerId = (int)Enums.ServiceLayerEnums.DataAccess
-                },
-                new Service
-                {
-                    RelatedEntityId = insertedEntity.Id,
-                    ServiceLayerId = (int)Enums.ServiceLayerEnums.Business
-                },
-                new Service
-                {
-                    RelatedEntityId = insertedEntity.Id,
-                    ServiceLayerId = (int)Enums.ServiceLayerEnums.Presentation
-                },
-            ]);
-            _context.SaveChanges();
-
             transaction.Commit();
         }
         catch (Exception)
@@ -91,15 +73,42 @@ public class EntityRepository : EFRepositoryBase<Entity>
             .Include(e => e.BasicResponseDto)
             .Include(e => e.DetailResponseDto)
             .Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Base))
-                .ThenInclude(f => f.FieldType);
+                .ThenInclude(f => f.FieldType).AsNoTracking();
 
         return result.ToList();
+    }
+
+    public EntityUpdateDto GetUpdateModel(int entityId)
+    {
+        using var context = new ProjectContext();
+
+        var existEntity = context.Entities
+            .Select(e => new EntityUpdateDto
+            {
+                Id = e.Id,
+                Name = e.Name,
+                TableName = e.TableName,
+                SoftDeletable = e.SoftDeletable,
+                Auditable = e.Auditable,
+                Archivable = e.Archivable,
+                CreateDtoId = e.CreateDtoId,
+                UpdateDtoId = e.UpdateDtoId,
+                DeleteDtoId = e.DeleteDtoId,
+                ReportDtoId = e.ReportDtoId,
+                BasicResponseDtoId = e.BasicResponseDtoId,
+                DetailResponseDtoId = e.DetailResponseDtoId
+            })
+            .FirstOrDefault(f => f.Id == entityId);
+        if (existEntity == null)
+            throw new Exception("Data to update not found");
+
+        return existEntity;
     }
 
     public Entity Update(EntityUpdateDto updateDto)
     {
         using var context = new ProjectContext();
-
+ 
         var existData = context.Entities.FirstOrDefault(f => f.Id == updateDto.Id);
         if (existData == null) throw new Exception("Data to update not found");
 

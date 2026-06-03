@@ -1,5 +1,6 @@
 ﻿using Generator.Domain.Core.Entities.Base;
 using Generator.Domain.Repository;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Generator.Domain.Core.Entities;
 
@@ -23,12 +24,19 @@ public class AppSetting : EntityBase
 
 
     #region Helpers
+    [NotMapped]
     public string SolutionPath { get => System.IO.Path.Combine(this.Path ?? "", this.SolutionName ?? ""); }
+    [NotMapped]
     public string CoreLayerProjectName { get => $"{this.ProjectName}.Core"; }
+    [NotMapped]
     public string ModelLayerProjectName { get => $"{this.ProjectName}.Model"; }
+    [NotMapped]
     public string BusinessLayerProjectName { get => $"{this.ProjectName}.Business"; }
+    [NotMapped]
     public string DataAccessLayerProjectName { get => $"{this.ProjectName}.DataAccess"; }
+    [NotMapped]
     public string WebAPILayerProjectName { get => $"{this.ProjectName}.WebAPI"; }
+    [NotMapped]
     public string WebUILayerProjectName { get => $"{this.ProjectName}.WebUI"; }
 
     public (string IdentityUserType, string IdentityRoleType, string IdentityKeyType) GetIdentityModelTypeNames(EntityRepository entityRepository, FieldRepository fieldRepository)

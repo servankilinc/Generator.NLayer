@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Query;
 using System.Linq.Expressions;
 using Generator.Domain.Context;
 
-namespace Generator.Domain.Repository;
+namespace Generator.Domain.Repository.Base;
 
 public class EFRepositoryBase<TEntity> where TEntity : class
 {

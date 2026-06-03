@@ -13,9 +13,8 @@ public class ProjectContext : DbContext
     //}
 
 
-    private static string? lastMigratedDb = string.Empty;
-
     // Dynamic Version
+    private static string? lastMigratedDb = string.Empty;
     public ProjectContext() : base(GetOptions())
     {
         if (lastMigratedDb != Statics.CurrentProject?.ProjectName)
@@ -59,10 +58,6 @@ public class ProjectContext : DbContext
     public DbSet<ValidationParam> ValidationParams { get; set; }
     public DbSet<ValidatorType> ValidatorTypes { get; set; }
     public DbSet<ValidatorTypeParam> ValidatorTypeParams { get; set; }
-
-    public DbSet<Service> Services { get; set; }
-    public DbSet<ServiceLayer> ServiceLayers { get; set; }
-
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -139,10 +134,6 @@ public class ProjectContext : DbContext
             e.HasMany(e => e.Dtos)
                 .WithOne(f => f.RelatedEntity)
                 .HasForeignKey(f => f.RelatedEntityId);
-
-            e.HasMany(e => e.Services)
-                .WithOne(s => s.RelatedEntity)
-                .HasForeignKey(s => s.RelatedEntityId);
         });
         #endregion
 
@@ -505,42 +496,6 @@ public class ProjectContext : DbContext
                 // GuidNotEmpty Validator (no additional params needed)
                 // LessThan Validator
                 new ValidatorTypeParam { Id = (int)Enums.ValidatorTypeParams.Length_Value, ValidatorTypeId = (int)Enums.ValidatorTypes.Length, Key = "Value" }
-            );
-        });
-        #endregion
-
-        #region Service
-        modelBuilder.Entity<Service>(s =>
-        {
-            s.HasKey(s => s.Id);
-
-            s.HasIndex(s => new { s.ServiceLayerId, s.RelatedEntityId }).IsUnique();
-
-            s.HasOne(s => s.ServiceLayer)
-                .WithMany(sl => sl.Services)
-                .HasForeignKey(s => s.ServiceLayerId);
-
-            s.HasOne(s => s.RelatedEntity)
-                .WithMany(e => e.Services)
-                .HasForeignKey(s => s.RelatedEntityId);
-        });
-        #endregion
-
-        #region ServiceLayer
-        modelBuilder.Entity<ServiceLayer>(sl =>
-        {
-            sl.HasKey(sl => sl.Id);
-
-            sl.HasMany(sl => sl.Services)
-                .WithOne(s => s.ServiceLayer)
-                .HasForeignKey(s => s.ServiceLayerId);
-
-            sl.HasData(
-                new ServiceLayer { Id = 1, Name = "Core" },
-                new ServiceLayer { Id = 2, Name = "Model" },
-                new ServiceLayer { Id = 3, Name = "DataAccess" },
-                new ServiceLayer { Id = 4, Name = "Business" },
-                new ServiceLayer { Id = 5, Name = "Presentation" }
             );
         });
         #endregion

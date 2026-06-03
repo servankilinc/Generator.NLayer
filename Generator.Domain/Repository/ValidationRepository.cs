@@ -1,8 +1,7 @@
-﻿//using Generator.Domain.Dtos.Validation;
-using Generator.Domain.Context;
+﻿using Generator.Domain.Context;
 using Microsoft.EntityFrameworkCore;
-using Generator.Domain.Core;
 using Generator.Domain.Core.Entities;
+using Generator.Domain.Repository.Base;
 
 namespace Generator.Domain.Repository;
 

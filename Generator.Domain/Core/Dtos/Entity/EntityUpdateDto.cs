@@ -1,4 +1,6 @@
-﻿namespace Generator.Domain.Core.Dtos.Entity;
+﻿using Generator.Domain.Core.Dtos.Field;
+
+namespace Generator.Domain.Core.Dtos.Entity;
 
 public class EntityUpdateDto
 {
