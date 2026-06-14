@@ -6,7 +6,7 @@ using Generator.Domain.Core.Dtos.DtoField;
 using Generator.Domain.Core.Dtos.Entity;
 using Generator.Domain.Core.Dtos.Field;
 using Generator.Domain.Core.Dtos.Relation;
-using Generator.Domain.Core.Entities;
+using Generator.Domain.Core.Dtos.Validation;
 using Generator.Domain.Core.Entities.Local;
 using Generator.Domain.Repository;
 using Microsoft.AspNetCore.Mvc;
@@ -447,6 +447,40 @@ app.MapDelete("/field", (int id, FieldRepository fieldRepository) =>
 });
 #endregion
 
+#region RelationType
+app.MapGet("/relationType/list", (RelationRepository relationRepository) =>
+{
+    try
+    {
+        var result = relationRepository.GetRelationTypes();
+        if (result is null)
+            return Results.NotFound();
+        return Results.Ok(result);
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+#endregion 
+
+#region DeleteBehaviorTypes
+app.MapGet("/deleteBehaviorType/list", (DeleteBehaviorTypeRepository deleteBehaviorTypeRepository) =>
+{
+    try
+    {
+        var result = deleteBehaviorTypeRepository.GetAll();
+        if (result is null)
+            return Results.NotFound();
+        return Results.Ok(result);
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+#endregion 
+
 #region Relation
 app.MapGet("/relation", (int id, RelationRepository relationRepository) =>
 {
@@ -480,9 +514,25 @@ app.MapGet("/relation/list/byEntity", (int entityId, RelationRepository relation
                 .Include(x => x.RelationType)
                 .Include(x => x.DeleteBehaviorType)
         );
+
         if (result is null)
             return Results.NotFound();
-        return Results.Ok(result);
+
+        var data = result.Select(x => new RelationDetailModel
+        {
+            Id = x.Id,
+            PrimaryFieldId = x.PrimaryFieldId,
+            PrimaryFieldName = $"{x.PrimaryField.Entity.Name}.{x.PrimaryField.Name}",
+            ForeignFieldId = x.ForeignFieldId,
+            ForeignFieldName = $"{x.ForeignField.Entity.Name}.{x.ForeignField.Name}",
+            RelationTypeId = x.RelationTypeId,
+            RelationTypeName = x.RelationType.Name,
+            DeleteBehaviorTypeId = x.DeleteBehaviorTypeId,
+            DeleteBehaviorTypeName = x.DeleteBehaviorType.Name,
+            PrimaryEntityVirPropName = x.PrimaryEntityVirPropName,
+            ForeignEntityVirPropName = x.ForeignEntityVirPropName
+        });
+        return Results.Ok(data);
     }
     catch (Exception)
     {
@@ -557,6 +607,23 @@ app.MapDelete("/relation", (int id, RelationRepository relationRepository) =>
 });
 #endregion
 
+#region CrudType
+app.MapGet("/crudtype/list", (CrudTypeRepository crudTypeRepository) =>
+{
+    try
+    {
+        var result = crudTypeRepository.GetAll(enableTracking: false);
+        if (result is null)
+            return Results.NotFound();
+        return Results.Ok(result);
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+#endregion
+
 #region Dto
 app.MapGet("/dto", (int entityId, DtoRepository dtoRepository) =>
 {
@@ -588,20 +655,20 @@ app.MapGet("/dto/updateModel", (int dtoId, DtoRepository dtoRepository) =>
     }
 });
 
-//app.MapGet("/dto/list/byEntity", (int entityId, DtoRepository dtoRepository) =>
-//{
-//    try
-//    {
-//        var result = dtoRepository.GetAll(filter: f => f.RelatedEntityId == entityId, include: i => i.Include(x => x.CrudType), enableTracking: false);
-//        if (result is null)
-//            return Results.NotFound();
-//        return Results.Ok(result);
-//    }
-//    catch (Exception)
-//    {
-//        return Results.InternalServerError();
-//    }
-//});
+app.MapGet("/dto/list/byEntity", (int entityId, DtoRepository dtoRepository) =>
+{
+    try
+    {
+        var result = dtoRepository.GetAll(filter: f => f.RelatedEntityId == entityId, include: i => i.Include(x => x.CrudType), enableTracking: false);
+        if (result is null)
+            return Results.NotFound();
+        return Results.Ok(result);
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
 
 app.MapGet("/dto/list/detail", (int entityId, DtoRepository dtoRepository) =>
 {
@@ -709,46 +776,6 @@ app.MapGet("/dtofield/list/updateModel", (int dtoId, DtoFieldRepository dtoField
     }
 });
 
-//app.MapPost("/dtofield", (DtoFieldCreateDto createDto, DtoFieldRepository dtoFieldRepository) =>
-//{
-//    try
-//    {
-//        if (string.IsNullOrEmpty(createDto.Name) || createDto.SourceFieldId == default)
-//            return Results.BadRequest("Check The Fields!");
-
-//        //if (createDto.SourceEntityId != createDto.DtoRelatedEntityId)
-//        //{
-//        //    if (createDto.DtoFieldRelations!.Count == 0)
-//        //    {
-//        //        MessageBox.Show("Check The Relations!", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-//        //        return;
-//        //    }
-//        //}
-
-//        dtoFieldRepository.Add(createDto);
-//        return Results.Ok();
-//    }
-//    catch (Exception)
-//    {
-//        return Results.InternalServerError();
-//    }
-//});
-
-//app.MapPut("/dtofield", (FieldUpdateDto updateDto, FieldRepository fieldRepository) =>
-//{
-//    try
-//    {
-//        if (updateDto.Name == default || updateDto.FieldTypeId == default)
-//            return Results.BadRequest("Check The Fields!");
-
-//        fieldRepository.Update(updateDto);
-//        return Results.Ok();
-//    }
-//    catch (Exception)
-//    {
-//        return Results.InternalServerError();
-//    }
-//});
 
 // ok
 app.MapPut("/dtofield/list", ([FromQuery] int dtoId, [FromBody] List<DtoFieldUpdateDto> updateDtos, DtoFieldRepository dtoFieldRepository) =>
@@ -763,27 +790,29 @@ app.MapPut("/dtofield/list", ([FromQuery] int dtoId, [FromBody] List<DtoFieldUpd
         return Results.InternalServerError();
     }
 });
-
-//app.MapDelete("/field", (int id, FieldRepository fieldRepository) =>
-//{
-//    try
-//    {
-//        fieldRepository.DeleteByFilter(f => f.Id == id);
-//        return Results.Ok();
-//    }
-//    catch (Exception)
-//    {
-//        return Results.InternalServerError();
-//    }
-//});
 #endregion
 
-#region CrudType
-app.MapGet("/crudtype/list", (CrudTypeRepository crudTypeRepository) =>
+#region ValidatorType
+app.MapGet("/validatorType", (int validatorTypeId, ValidationRepository validationRepository) =>
 {
     try
     {
-        var result = crudTypeRepository.GetAll(enableTracking: false);
+        var result = validationRepository.GetValidatorType(validatorTypeId);
+        if (result is null)
+            return Results.NotFound();
+        return Results.Ok(result);
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+
+app.MapGet("/validatorType/list", (ValidationRepository validationRepository) =>
+{
+    try
+    {
+        var result = validationRepository.GetValidatorTypes();
         if (result is null)
             return Results.NotFound();
         return Results.Ok(result);
@@ -795,12 +824,12 @@ app.MapGet("/crudtype/list", (CrudTypeRepository crudTypeRepository) =>
 });
 #endregion
 
-#region RelationType
-app.MapGet("/relationTypes", (RelationRepository relationRepository) =>
+#region ValidatorTypeParams
+app.MapGet("/validatorTypeParam/list", (int validatorTypeId, ValidationRepository validationRepository) =>
 {
     try
     {
-        var result = relationRepository.GetRelationTypes();
+        var result = validationRepository.GetValidatorTypeParams(validatorTypeId);
         if (result is null)
             return Results.NotFound();
         return Results.Ok(result);
@@ -810,16 +839,14 @@ app.MapGet("/relationTypes", (RelationRepository relationRepository) =>
         return Results.InternalServerError();
     }
 });
-#endregion 
+#endregion
 
-#region DeleteBehaviorTypes
-app.MapGet("/deleteBehaviorTypes", (DeleteBehaviorTypeRepository deleteBehaviorTypeRepository) =>
+#region Validation
+app.MapGet("/validation/list/updateModel", (int dtoFieldId, ValidationRepository validationRepository) =>
 {
     try
     {
-        var result = deleteBehaviorTypeRepository.GetAll();
-        if (result is null)
-            return Results.NotFound();
+        var result = validationRepository.GetUpdateDtos(dtoFieldId);
         return Results.Ok(result);
     }
     catch (Exception)
@@ -827,6 +854,27 @@ app.MapGet("/deleteBehaviorTypes", (DeleteBehaviorTypeRepository deleteBehaviorT
         return Results.InternalServerError();
     }
 });
-#endregion 
+
+app.MapPost("/validation/list", (List<ValidationUpdateDto> updateDtos, ValidationRepository validationRepository) =>
+{
+    try
+    {
+        if (
+            updateDtos.Any(f => f.ValidatorTypeId == default) ||
+            updateDtos.Any(f => f.DtoFieldId == default) ||
+            updateDtos.DistinctBy(f => f.DtoFieldId).ToList().Count > 1 ||
+            updateDtos.Any(f => f.ValidationParams != null && f.ValidationParams.Any(fi => string.IsNullOrEmpty(fi.Value)))
+        )
+            return Results.BadRequest("Check The Fields!");
+
+        validationRepository.SetValidations(updateDtos);
+        return Results.Ok();
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+#endregion
 
 app.Run();

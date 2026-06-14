@@ -263,16 +263,28 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
         }
     }
 
-    public void Update(List<DtoFieldUpdateDto> updateDtos, int dtoId)
+    public void Update(List<DtoFieldUpdateDto> dtoFieldsToUpdate, int dtoId)
     {
         using var context = new ProjectContext();
         var transaction = context.Database.BeginTransaction();
         try
         {
+            var existDtoFields = context.DtoFields.Where(f => f.DtoId == dtoId);
 
-            foreach (var updateDto in updateDtos)
+            // Delete DtoFields that are not in the updateDtos list
+            foreach (var dtoField in existDtoFields)
             {
-                var existData = context.DtoFields.FirstOrDefault(f => f.Id == updateDto.Id);
+                if (!dtoFieldsToUpdate.Any(f => f.Id == dtoField.Id))
+                {
+                    context.DtoFields.Remove(dtoField);
+                }
+            }
+            context.SaveChanges();
+
+
+            foreach (var updateDto in dtoFieldsToUpdate)
+            {
+                var existData = existDtoFields.FirstOrDefault(f => f.Id == updateDto.Id);
 
                 if (existData == null)
                 {

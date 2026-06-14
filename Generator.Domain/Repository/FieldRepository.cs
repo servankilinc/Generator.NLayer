@@ -2,6 +2,8 @@
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Core.Dtos.Field;
 using Generator.Domain.Repository.Base;
+using Generator.Domain.Core;
+using Microsoft.EntityFrameworkCore;
 
 namespace Generator.Domain.Repository;
 
@@ -11,7 +13,7 @@ public class FieldRepository : EFRepositoryBase<Field>
     {
         using var context = new ProjectContext();
 
-        var existData = context.Fields.Where(f => f.EntityId == entityId).Select(f => new FieldUpdateDto
+        var existData = context.Fields.Where(f => f.EntityId == entityId && f.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base).Include(i => i.FieldType).Select(f => new FieldUpdateDto
         {
             Id = f.Id,
             FieldTypeId = f.FieldTypeId,
@@ -44,41 +46,63 @@ public class FieldRepository : EFRepositoryBase<Field>
         return existData;
     }
 
-    public void Update(List<FieldUpdateDto> updateDtos, int entityId)
+    public void Update(List<FieldUpdateDto> fieldsToUpdate, int entityId)
     {
         using var context = new ProjectContext();
+        var transaction = context.Database.BeginTransaction();
 
-        foreach (var updateDto in updateDtos)
+        try
         {
-            var existData = context.Fields.FirstOrDefault(f => f.Id == updateDto.Id);
+            var existFields = context.Fields.Where(f => f.EntityId == entityId && f.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base).Include(i => i.FieldType);
 
-            if (existData == null)
+
+            // delete not exist list
+            foreach (var existField in existFields)
             {
-                context.Fields.Add(new Field
+                if (!fieldsToUpdate.Any(f => f.Id != default && f.Id == existField.Id))
                 {
-                    Id = updateDto.Id,
-                    EntityId = entityId,
-                    FieldTypeId = updateDto.FieldTypeId,
-                    Name = updateDto.Name,
-                    IsRequired = updateDto.IsRequired,
-                    IsUnique = updateDto.IsUnique,
-                    IsList = updateDto.IsList,
-                    Filterable = updateDto.Filterable
-                });
+                    context.Fields.Remove(existField);
+                }
             }
-            else
-            {
-                existData.FieldTypeId = updateDto.FieldTypeId;
-                existData.Name = updateDto.Name;
-                existData.IsRequired = updateDto.IsRequired;
-                existData.IsUnique = updateDto.IsUnique;
-                existData.IsList = updateDto.IsList;
-                existData.Filterable = updateDto.Filterable;
+            context.SaveChanges();
 
-                context.Fields.Update(existData);
+            foreach (var updateDto in fieldsToUpdate)
+            {
+                var existData = existFields.FirstOrDefault(f => f.Id == updateDto.Id);
+
+                if (existData == null)
+                {
+                    context.Fields.Add(new Field
+                    {
+                        EntityId = entityId,
+                        FieldTypeId = updateDto.FieldTypeId,
+                        Name = updateDto.Name,
+                        IsRequired = updateDto.IsRequired,
+                        IsUnique = updateDto.IsUnique,
+                        IsList = updateDto.IsList,
+                        Filterable = updateDto.Filterable
+                    });
+                }
+                else
+                {
+                    existData.FieldTypeId = updateDto.FieldTypeId;
+                    existData.Name = updateDto.Name;
+                    existData.IsRequired = updateDto.IsRequired;
+                    existData.IsUnique = updateDto.IsUnique;
+                    existData.IsList = updateDto.IsList;
+                    existData.Filterable = updateDto.Filterable;
+
+                    context.Fields.Update(existData);
+                }
             }
+            context.SaveChanges();
+
+            transaction.Commit();
         }
-        context.SaveChanges();
+        catch (Exception)
+        {
+            transaction.Rollback();
+        }
     }
 
     public Field Add(FieldCreateDto fieldCreateDto)
