@@ -1,0 +1,124 @@
+﻿<Window x:Class="GeneratorWPF.View._Dto.Partials.DtoCreateDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:GeneratorWPF.View._Dto.Partials"
+        xmlns:vm="clr-namespace:GeneratorWPF.ViewModel._Dto"
+        mc:Ignorable="d"
+        Title="DtoCreateDialog" Height="650" Width="800">
+    <!--<Window.DataContext>
+        <vm:DtoCreateVM/>
+    </Window.DataContext>-->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="10">
+
+            <Label>Related Entity:</Label>
+            <ComboBox 
+                ItemsSource="{Binding EntityList}"
+                SelectedValue="{Binding DtoToCreate.RelatedEntityId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                SelectedValuePath="Id"
+                DisplayMemberPath="Name"
+                HorizontalAlignment="Left" 
+                MinWidth="250"
+            />
+
+            <Label>Crud Type:</Label>
+            <ComboBox 
+                 ItemsSource="{Binding CrudTypes}"
+                 SelectedValue="{Binding DtoToCreate.CrudTypeId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                 SelectedValuePath="Id"
+                 DisplayMemberPath="Name"
+                 HorizontalAlignment="Left" 
+                 MinWidth="250"
+             />
+
+            <Label Margin="0,10,0,0">Dto Name:</Label>
+            <TextBox x:Name="txtDtoName" Text="{Binding DtoToCreate.Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource textBoxStyle}" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1">
+            <DataGrid ItemsSource="{Binding DtoFields}" Style="{StaticResource DataGridStyle}" ColumnHeaderStyle="{StaticResource StyleDataGridHeader}" AutoGenerateColumns="False" Margin="10" CanUserAddRows="False" CanUserDeleteRows="False">
+                <DataGrid.Columns>
+
+                    <DataGridTemplateColumn Header="Source Entity" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox 
+                                    ItemsSource="{Binding DataContext.EntityList, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    SelectedValue="{Binding SourceEntityId, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                    SelectedValuePath="Id"
+                                    DisplayMemberPath="Name"
+                                    Tag="{Binding}"
+                                />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+
+                    <DataGridTemplateColumn Header="Source Field" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox
+                                    ItemsSource="{Binding FieldList, Mode=OneWay}"
+                                    SelectedValue="{Binding SourceFieldId, UpdateSourceTrigger=PropertyChanged}"
+                                    SelectedValuePath="Id"
+                                    DisplayMemberPath="Name"
+                                    Tag="{Binding}"
+                                />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+
+                    <DataGridTextColumn Header="Field Name" Binding="{Binding Name}" Width="*" />
+
+                    <DataGridCheckBoxColumn Header="Is Required" Binding="{Binding IsRequired}" Width="*" />
+
+                    <DataGridCheckBoxColumn Header="Is List" Binding="{Binding IsList}" Width="*" />
+
+                    <DataGridTemplateColumn Header="Remove" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Remove" 
+                                    Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                    CommandParameter="{Binding}" 
+                                    Style="{StaticResource DangerBtnStyle}"
+                                        HorizontalAlignment="Center"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Margin="10" HorizontalAlignment="Right">
+            <Button Content="Add Field" Command="{Binding AddFieldCommand}" Style="{StaticResource PrimaryBtnStyle}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="10">
+            <Label FontWeight="Light">Preview</Label>
+            <ScrollViewer Height="120">
+                <DataGrid Width="Auto" ItemsSource="{Binding DtoFields, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource DataGridStyle}" ColumnHeaderStyle="{StaticResource StyleDataGridHeader}" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Source Field Id" Binding="{Binding SourceFieldId}" Width="*" />
+                        <DataGridTextColumn Header="Field Name" Binding="{Binding Name}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </ScrollViewer>
+        </StackPanel>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="10">
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Style="{StaticResource SecondaryBtnStyle}"/>
+            <Button Content="Save" Command="{Binding SaveCommand}" Style="{StaticResource SuccessBtnStyle}"/>
+        </StackPanel>
+    </Grid>
+</Window>

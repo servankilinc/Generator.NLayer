@@ -1,0 +1,7 @@
+.form_validation_feedback {
+    color: #F8285A;
+}
+
+.btn-group:has(> .ms-auto) {
+    margin-left: auto;
+}

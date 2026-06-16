@@ -1,0 +1,39 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vmHome="clr-namespace:GeneratorWPF.ViewModel"
+                    xmlns:vmEntity="clr-namespace:GeneratorWPF.ViewModel._Entity" 
+                    xmlns:vmDto="clr-namespace:GeneratorWPF.ViewModel._Dto" 
+                    xmlns:viewHome="clr-namespace:GeneratorWPF.View"
+                    xmlns:viewEntity="clr-namespace:GeneratorWPF.View._Entity" 
+                    xmlns:viewDto="clr-namespace:GeneratorWPF.View._Dto" 
+                >
+
+    <DataTemplate DataType="{x:Type vmHome:HomeVM}">
+        <viewHome:Home/>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vmEntity:EntityHomeVM}">
+        <viewEntity:EntityHome/>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vmEntity:EntityDetailVM}">
+        <viewEntity:EntityDetail/>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vmDto:DtoHomeVM}">
+        <viewDto:DtoHome/>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vmDto:DtoDetailVM}">
+        <viewDto:DtoDetail/>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vmHome:EntranceVM}">
+        <viewHome:Entrance/>
+    </DataTemplate>
+
+    <!--<DataTemplate DataType="{x:Type vm:ValidationListVM}">
+        <view:ValidationList/>
+    </DataTemplate>-->
+
+</ResourceDictionary>

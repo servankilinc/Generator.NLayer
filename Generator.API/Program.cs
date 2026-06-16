@@ -176,8 +176,8 @@ app.MapPut("/appSetting", (AppSettingUpdateDto updateDto, AppSettingsRepository 
 {
     try
     {
-        bool checkUser = !updateDto.IsThereUser || updateDto.UserEntityId != default;
-        bool checkRole = !updateDto.IsThereRole || updateDto.RoleEntityId != default;
+        bool checkRole = !updateDto.IsThereUser || (updateDto.IsThereUser && updateDto.UserEntityId == default);
+        bool checkUser = !updateDto.IsThereRole || (updateDto.IsThereRole && updateDto.RoleEntityId == default);
         if (!checkRole || !checkUser)
             return Results.BadRequest("Check The Fields!");
 

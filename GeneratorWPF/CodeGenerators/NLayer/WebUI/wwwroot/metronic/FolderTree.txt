@@ -1,0 +1,10 @@
+﻿-css
+	-style.bundle.css: template bundle edilmiş css dosyası
+-js
+	-scripts.bundle.js: template bundle edilmiş js dosyası
+-plugins: dahil edilen 3d party paketler fonts dosyası
+	-custom: 3d party(opsiyonel) paketleri eklediğimiz klasör
+	-global: 
+		-fonts: icon ve font paketleri...
+		-plugins.bundle.css: opsiyonel olmayan template'in bağımlı olduğu paketlerin bundel edilmiş css dosyası
+		-plugins.bundle.js: opsiyonel olmayan template'in bağımlı olduğu paketlerin bundel edilmiş js dosyası
