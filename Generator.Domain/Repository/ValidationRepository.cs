@@ -9,30 +9,6 @@ namespace Generator.Domain.Repository;
 
 public class ValidationRepository : EFRepositoryBase<Validation>
 {
-    public List<ValidatorType> GetValidatorTypes()
-    {
-        using var _context = new ProjectContext();
-        return _context.Set<ValidatorType>().Include(i => i.ValidatorTypeParams).ToList();
-    }
-
-    public ValidatorType GetValidatorType(int validatorTypeId)
-    {
-        using var _context = new ProjectContext();
-        return _context.Set<ValidatorType>().FirstOrDefault(i => i.Id == validatorTypeId);
-    }
-
-    public List<ValidatorTypeParam> GetValidatorTypeParams(int validatorTypeId)
-    {
-        using var _context = new ProjectContext();
-        return _context.Set<ValidatorTypeParam>().Where(f => f.ValidatorTypeId == validatorTypeId).Include(i => i.ValidatorType).ToList();
-    }
-
-    public List<ValidationParam> GetValidationParams(int validationId)
-    {
-        using var _context = new ProjectContext();
-        return _context.Set<ValidationParam>().Where(f => f.ValidationId == validationId).Include(i => i.Validation).Include(i => i.ValidatorTypeParam).ToList();
-    }
-    
     public List<ValidationUpdateDto> GetUpdateDtos(int dtoFieldId)
     {
         using var _context = new ProjectContext();
@@ -58,14 +34,14 @@ public class ValidationRepository : EFRepositoryBase<Validation>
         }).ToList();
     }
 
-    public void SetValidations(List<ValidationUpdateDto> list)
+    public void Update(List<ValidationUpdateDto> list)
     {
         using var _context = new ProjectContext();
         using var transaction = _context.Database.BeginTransaction();
         try
         {
             var existValidations = _context.Validations.Where(f => f.DtoFieldId == list.First().DtoFieldId);
-            
+
             // Delete DtoFields that are not in the updateDtos list
             foreach (var exValidation in existValidations)
             {

@@ -26,6 +26,24 @@ public class FieldRepository : EFRepositoryBase<Field>
         return existData;
     }
 
+    public Field Add(FieldCreateDto fieldCreateDto)
+    {
+        using var context = new ProjectContext();
+
+        var data = new Field
+        {
+            FieldTypeId = fieldCreateDto.FieldTypeId,
+            EntityId = fieldCreateDto.EntityId,
+            Name = fieldCreateDto.Name,
+            IsRequired = fieldCreateDto.IsRequired,
+            IsUnique = fieldCreateDto.IsUnique,
+            IsList = fieldCreateDto.IsList,
+            Filterable = fieldCreateDto.Filterable
+        };
+        context.Set<Field>().Add(data);
+        context.SaveChanges();
+        return data;
+    }
 
     public Field Update(FieldUpdateDto updateDto)
     {
@@ -103,33 +121,5 @@ public class FieldRepository : EFRepositoryBase<Field>
         {
             transaction.Rollback();
         }
-    }
-
-    public Field Add(FieldCreateDto fieldCreateDto)
-    {
-        using var context = new ProjectContext();
-
-        var data = new Field
-        {
-            FieldTypeId = fieldCreateDto.FieldTypeId,
-            EntityId = fieldCreateDto.EntityId,
-            Name = fieldCreateDto.Name,
-            IsRequired = fieldCreateDto.IsRequired,
-            IsUnique = fieldCreateDto.IsUnique,
-            IsList = fieldCreateDto.IsList,
-            Filterable = fieldCreateDto.Filterable
-        };
-        context.Set<Field>().Add(data);
-        context.SaveChanges();
-        return data;
-    }
-
-    public string GetFieldName(int fieldId)
-    {
-        using var context = new ProjectContext();
-
-        var name = context.Fields.Where(f => f.Id == fieldId).Select(d => d.Name).FirstOrDefault();
-
-        return name;
     }
 }

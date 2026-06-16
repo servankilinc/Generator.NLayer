@@ -1,10 +1,8 @@
 ﻿using Generator.Domain.Context;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Dtos.Entity;
-using Generator.Domain.Core.Dtos.Field;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Repository.Base;
-using Microsoft.EntityFrameworkCore;
 
 namespace Generator.Domain.Repository;
 
@@ -61,23 +59,6 @@ public class EntityRepository : EFRepositoryBase<Entity>
         }
     }
 
-    public List<Entity> GetListBasic()
-    {
-        using var _context = new ProjectContext();
-
-        var result = _context.Entities
-            .Include(e => e.CreateDto)
-            .Include(e => e.UpdateDto)
-            .Include(e => e.DeleteDto)
-            .Include(e => e.ReportDto)
-            .Include(e => e.BasicResponseDto)
-            .Include(e => e.DetailResponseDto)
-            .Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Base))
-                .ThenInclude(f => f.FieldType).AsNoTracking();
-
-        return result.ToList();
-    }
-
     public EntityUpdateDto GetUpdateModel(int entityId)
     {
         using var context = new ProjectContext();
@@ -108,7 +89,7 @@ public class EntityRepository : EFRepositoryBase<Entity>
     public Entity Update(EntityUpdateDto updateDto)
     {
         using var context = new ProjectContext();
- 
+
         var existData = context.Entities.FirstOrDefault(f => f.Id == updateDto.Id);
         if (existData == null) throw new Exception("Data to update not found");
 

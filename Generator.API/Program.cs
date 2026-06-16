@@ -7,6 +7,7 @@ using Generator.Domain.Core.Dtos.Entity;
 using Generator.Domain.Core.Dtos.Field;
 using Generator.Domain.Core.Dtos.Relation;
 using Generator.Domain.Core.Dtos.Validation;
+using Generator.Domain.Core.Entities;
 using Generator.Domain.Core.Entities.Local;
 using Generator.Domain.Repository;
 using Microsoft.AspNetCore.Mvc;
@@ -45,6 +46,8 @@ builder.Services.AddScoped<EntityRepository>();
 builder.Services.AddScoped<FieldRepository>();
 builder.Services.AddScoped<FieldTypeRepository>();
 builder.Services.AddScoped<RelationRepository>();
+builder.Services.AddScoped<ValidatorTypeRepository>();
+builder.Services.AddScoped<ValidatorTypeParamRepository>();
 builder.Services.AddScoped<ValidationRepository>();
 
 
@@ -60,9 +63,7 @@ if (app.Environment.IsDevelopment())
 
 //app.UseHttpsRedirection();
 
-
 #region Project
-//ok
 app.MapGet("/activeProject", () =>
 {
     try
@@ -77,7 +78,6 @@ app.MapGet("/activeProject", () =>
     }
 });
 
-// ok
 app.MapPost("/activeProject", (int id) =>
 {
     try
@@ -96,7 +96,6 @@ app.MapPost("/activeProject", (int id) =>
     }
 });
 
-// ok
 app.MapGet("/project/list", async () =>
 {
     try
@@ -111,7 +110,6 @@ app.MapGet("/project/list", async () =>
     }
 });
 
-// ok
 app.MapPost("/project", async (Project project) =>
 {
     try
@@ -130,7 +128,6 @@ app.MapPost("/project", async (Project project) =>
     }
 });
 
-// ok
 app.MapDelete("/project", async (int id) =>
 {
     try
@@ -155,7 +152,6 @@ app.MapDelete("/project", async (int id) =>
 #endregion
 
 #region AppSettings
-// ok
 app.MapGet("/appSetting", (AppSettingsRepository appSettingsRepository) =>
 {
     try
@@ -171,13 +167,12 @@ app.MapGet("/appSetting", (AppSettingsRepository appSettingsRepository) =>
     }
 });
 
-// ok
 app.MapPut("/appSetting", (AppSettingUpdateDto updateDto, AppSettingsRepository appSettingsRepository) =>
 {
     try
     {
-        bool checkRole = !updateDto.IsThereUser || (updateDto.IsThereUser && updateDto.UserEntityId == default);
-        bool checkUser = !updateDto.IsThereRole || (updateDto.IsThereRole && updateDto.RoleEntityId == default);
+        bool checkUser = !updateDto.IsThereUser || updateDto.UserEntityId != default;
+        bool checkRole = !updateDto.IsThereRole || updateDto.RoleEntityId != default;
         if (!checkRole || !checkUser)
             return Results.BadRequest("Check The Fields!");
 
@@ -198,37 +193,6 @@ app.MapPut("/appSetting", (AppSettingUpdateDto updateDto, AppSettingsRepository 
 #endregion
 
 #region Entity
-app.MapGet("/entity", (int id, EntityRepository entityRepository) =>
-{
-    try
-    {
-        var result = entityRepository.Get(filter: f => f.Id == id);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/entity/withBaseFields", (int id, EntityRepository entityRepository) =>
-{
-    try
-    {
-        var result = entityRepository.Get(filter: f => f.Id == id, include: i => i.Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)FieldTypeSourceEnums.Base)).ThenInclude(f => f.FieldType));
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-// ok
 app.MapGet("/entity/updateModel", (int entityId, EntityRepository entityRepository) =>
 {
     try
@@ -244,27 +208,22 @@ app.MapGet("/entity/updateModel", (int entityId, EntityRepository entityReposito
     }
 });
 
-app.MapGet("/entity/list", (EntityRepository entityRepository) =>
-{
-    try
-    {
-        var result = entityRepository.GetAll(f => true);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-// ok
 app.MapGet("/entity/list/withBaseFields", (EntityRepository entityRepository) =>
 {
     try
     {
-        var result = entityRepository.GetListBasic();
+        var result = entityRepository.GetAll(
+            include: i => i
+                .Include(e => e.CreateDto)
+                .Include(e => e.UpdateDto)
+                .Include(e => e.DeleteDto)
+                .Include(e => e.ReportDto)
+                .Include(e => e.BasicResponseDto)
+                .Include(e => e.DetailResponseDto)
+                .Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Base))
+                    .ThenInclude(f => f.FieldType),
+            enableTracking: false
+        );
         if (result is null)
             return Results.NotFound();
         return Results.Ok(result);
@@ -275,7 +234,6 @@ app.MapGet("/entity/list/withBaseFields", (EntityRepository entityRepository) =>
     }
 });
 
-// ok
 app.MapPost("/entity", (EntityCreateDto createDto, EntityRepository entityRepository) =>
 {
     try
@@ -323,7 +281,6 @@ app.MapDelete("/entity", (int id, EntityRepository entityRepository) =>
 #endregion
 
 #region FieldType
-// ok
 app.MapGet("/fieldType/list/onbasetype", (FieldTypeRepository fieldTypeRepository) =>
 {
     try
@@ -341,21 +298,6 @@ app.MapGet("/fieldType/list/onbasetype", (FieldTypeRepository fieldTypeRepositor
 #endregion
 
 #region Field
-app.MapGet("/field", (int id, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        var field = fieldRepository.Get(f => f.Id == id);
-        if (field is null)
-            return Results.NotFound();
-        return Results.Ok(field);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
 app.MapGet("/field/list/byEntity", (int entityId, FieldRepository fieldRepository) =>
 {
     try
@@ -371,7 +313,6 @@ app.MapGet("/field/list/byEntity", (int entityId, FieldRepository fieldRepositor
     }
 });
 
-// ok
 app.MapGet("/field/list/updateModel", (int entityId, FieldRepository fieldRepository) =>
 {
     try
@@ -387,57 +328,11 @@ app.MapGet("/field/list/updateModel", (int entityId, FieldRepository fieldReposi
     }
 });
 
-app.MapPost("/field", (FieldCreateDto createDto, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        if (string.IsNullOrEmpty(createDto.Name) || createDto.EntityId == default || createDto.FieldTypeId == default)
-            return Results.BadRequest("Check The Fields!");
-
-        fieldRepository.Add(createDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPut("/field", (FieldUpdateDto updateDto, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        if (updateDto.Name == default || updateDto.FieldTypeId == default)
-            return Results.BadRequest("Check The Fields!");
-
-        fieldRepository.Update(updateDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-// ok
 app.MapPut("/field/list", ([FromQuery] int entityId, [FromBody] List<FieldUpdateDto> updateDtos, FieldRepository fieldRepository) =>
 {
     try
     {
         fieldRepository.Update(updateDtos, entityId);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapDelete("/field", (int id, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        fieldRepository.DeleteByFilter(f => f.Id == id);
         return Results.Ok();
     }
     catch (Exception)
@@ -482,24 +377,6 @@ app.MapGet("/deleteBehaviorType/list", (DeleteBehaviorTypeRepository deleteBehav
 #endregion 
 
 #region Relation
-app.MapGet("/relation", (int id, RelationRepository relationRepository) =>
-{
-    try
-    {
-        var relation = relationRepository.Get(
-            filter: f => f.Id == id,
-            include: i => i.Include(x => x.PrimaryField).Include(x => x.ForeignField)
-        );
-        if (relation is null)
-            return Results.NotFound();
-        return Results.Ok(relation);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
 app.MapGet("/relation/list/byEntity", (int entityId, RelationRepository relationRepository) =>
 {
     try
@@ -625,21 +502,6 @@ app.MapGet("/crudtype/list", (CrudTypeRepository crudTypeRepository) =>
 #endregion
 
 #region Dto
-app.MapGet("/dto", (int entityId, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        var result = dtoRepository.Get(f => f.RelatedEntityId == entityId);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
 app.MapGet("/dto/updateModel", (int dtoId, DtoRepository dtoRepository) =>
 {
     try
@@ -731,36 +593,6 @@ app.MapDelete("/dto", (int id, DtoRepository dtoRepository) =>
 #endregion
 
 #region DtoField
-app.MapGet("/dtofield", (int id, DtoFieldRepository dtoFieldRepository) =>
-{
-    try
-    {
-        var field = dtoFieldRepository.Get(f => f.Id == id);
-        if (field is null)
-            return Results.NotFound();
-        return Results.Ok(field);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/dtoFiedRelations", (int dtoFieldId, DtoFieldRepository dtoFieldRepository) =>
-{
-    try
-    {
-        var field = dtoFieldRepository.GetDtoFieldRelations(dtoFieldId);
-        if (field is null)
-            return Results.NotFound();
-        return Results.Ok(field);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
 app.MapGet("/dtofield/list/updateModel", (int dtoId, DtoFieldRepository dtoFieldRepository) =>
 {
     try
@@ -776,8 +608,6 @@ app.MapGet("/dtofield/list/updateModel", (int dtoId, DtoFieldRepository dtoField
     }
 });
 
-
-// ok
 app.MapPut("/dtofield/list", ([FromQuery] int dtoId, [FromBody] List<DtoFieldUpdateDto> updateDtos, DtoFieldRepository dtoFieldRepository) =>
 {
     try
@@ -793,26 +623,11 @@ app.MapPut("/dtofield/list", ([FromQuery] int dtoId, [FromBody] List<DtoFieldUpd
 #endregion
 
 #region ValidatorType
-app.MapGet("/validatorType", (int validatorTypeId, ValidationRepository validationRepository) =>
+app.MapGet("/validatorType/list", (ValidatorTypeRepository validatorTypeRepository) =>
 {
     try
     {
-        var result = validationRepository.GetValidatorType(validatorTypeId);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/validatorType/list", (ValidationRepository validationRepository) =>
-{
-    try
-    {
-        var result = validationRepository.GetValidatorTypes();
+        var result = validatorTypeRepository.GetAll(include: i => i.Include(x => x.ValidatorTypeParams), enableTracking: false);
         if (result is null)
             return Results.NotFound();
         return Results.Ok(result);
@@ -825,11 +640,11 @@ app.MapGet("/validatorType/list", (ValidationRepository validationRepository) =>
 #endregion
 
 #region ValidatorTypeParams
-app.MapGet("/validatorTypeParam/list", (int validatorTypeId, ValidationRepository validationRepository) =>
+app.MapGet("/validatorTypeParam/list", (int validatorTypeId, ValidatorTypeParamRepository validatorTypeParamRepository) =>
 {
     try
     {
-        var result = validationRepository.GetValidatorTypeParams(validatorTypeId);
+        var result = validatorTypeParamRepository.GetAll(filter: f => f.ValidatorTypeId == validatorTypeId, include: i => i.Include(i => i.ValidatorType));
         if (result is null)
             return Results.NotFound();
         return Results.Ok(result);
@@ -867,7 +682,7 @@ app.MapPost("/validation/list", (List<ValidationUpdateDto> updateDtos, Validatio
         )
             return Results.BadRequest("Check The Fields!");
 
-        validationRepository.SetValidations(updateDtos);
+        validationRepository.Update(updateDtos);
         return Results.Ok();
     }
     catch (Exception)

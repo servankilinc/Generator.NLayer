@@ -2,7 +2,6 @@
 using Generator.Domain.Core;
 using Generator.Domain.Core.Dtos.Dto;
 using Generator.Domain.Core.Dtos.DtoField;
-using Generator.Domain.Core.Dtos.Entity;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Repository.Base;
 using Microsoft.EntityFrameworkCore;
@@ -29,54 +28,6 @@ public class DtoRepository : EFRepositoryBase<Dto>
             throw new Exception("Data to update not found");
 
         return existEntity;
-    }
-
-    public DtoField GetDtoFieldByValidations(Expression<Func<DtoField, bool>> expresion)
-    {
-        using var context = new ProjectContext();
-        return context.DtoFields
-                .Where(expresion)
-                .Include(i => i.Validations)
-                    .ThenInclude(i => i.ValidatorType)
-                        .ThenInclude(i => i.ValidatorTypeParams)
-                .Include(i => i.Validations)
-                    .ThenInclude(i => i.ValidationParams)
-                        .ThenInclude(i => i.ValidatorTypeParam)
-                .FirstOrDefault();
-    }
-
-
-    public List<Dto> GetListByValidations(Expression<Func<Dto, bool>> expresion)
-    {
-        using var context = new ProjectContext();
-        return context.Dtos
-                .Where(expresion)
-                .Include(i => i.RelatedEntity)
-                .Include(i => i.DtoFields)
-                    .ThenInclude(df => df.Validations)
-                        .ThenInclude(v => v.ValidatorType)
-                .Include(i => i.DtoFields)
-                    .ThenInclude(df => df.Validations)
-                        .ThenInclude(v => v.ValidationParams)
-                            .ThenInclude(vp => vp.ValidatorTypeParam)
-                .ToList();
-    }
-
-
-    public List<Dto> GetList(Expression<Func<Dto, bool>> expresion)
-    {
-        using var context = new ProjectContext();
-        return context.Dtos
-                .Where(expresion)
-                .Include(i => i.RelatedEntity)
-                .Include(i => i.CrudType)
-                .Include(i => i.DtoFields)
-                    .ThenInclude(df => df.SourceField)
-                        .ThenInclude(sf => sf.FieldType)
-                .Include(i => i.DtoFields)
-                    .ThenInclude(df => df.SourceField)
-                        .ThenInclude(sf => sf.Entity)
-                .ToList();
     }
 
     public List<DtoDetailResponseDto> GetDetailList(Expression<Func<Dto, bool>> expresion)
