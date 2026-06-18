@@ -377,6 +377,49 @@ app.MapGet("/deleteBehaviorType/list", (DeleteBehaviorTypeRepository deleteBehav
 #endregion 
 
 #region Relation
+app.MapGet("/relation/list", (RelationRepository relationRepository) =>
+{
+    try
+    {
+        var result = relationRepository.GetAll(
+            include: i => i
+                .Include(x => x.PrimaryField)
+                    .ThenInclude(x => x.Entity)
+                .Include(x => x.ForeignField)
+                    .ThenInclude(x => x.Entity)
+                .Include(x => x.RelationType)
+                .Include(x => x.DeleteBehaviorType)
+        );
+
+        if (result is null)
+            return Results.NotFound();
+
+        var data = result.Select(x => new RelationDetailModel
+        {
+            Id = x.Id,
+            PrimaryEntityId = x.PrimaryField.EntityId,
+            PrimaryEntityName = x.PrimaryField.Entity.Name,
+            ForeignEntityId = x.ForeignField.EntityId,
+            ForeignEntityName = x.ForeignField.Entity.Name,
+            PrimaryFieldId = x.PrimaryFieldId,
+            PrimaryFieldName = $"{x.PrimaryField.Entity.Name}.{x.PrimaryField.Name}",
+            ForeignFieldId = x.ForeignFieldId,
+            ForeignFieldName = $"{x.ForeignField.Entity.Name}.{x.ForeignField.Name}",
+            RelationTypeId = x.RelationTypeId,
+            RelationTypeName = x.RelationType.Name,
+            DeleteBehaviorTypeId = x.DeleteBehaviorTypeId,
+            DeleteBehaviorTypeName = x.DeleteBehaviorType.Name,
+            PrimaryEntityVirPropName = x.PrimaryEntityVirPropName,
+            ForeignEntityVirPropName = x.ForeignEntityVirPropName
+        });
+        return Results.Ok(data);
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+
 app.MapGet("/relation/list/byEntity", (int entityId, RelationRepository relationRepository) =>
 {
     try

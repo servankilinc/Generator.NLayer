@@ -3,6 +3,10 @@
 public class RelationDetailModel
 {
     public int Id { get; set; }
+    public int PrimaryEntityId { get; set; }
+    public string? PrimaryEntityName { get; set; }
+    public int ForeignEntityId { get; set; }
+    public string? ForeignEntityName { get; set; }
     public int PrimaryFieldId { get; set; }
     public string? PrimaryFieldName { get; set; }
     public int ForeignFieldId { get; set; }
