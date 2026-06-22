@@ -1,3 +1,5 @@
+using Generator.API.SignalR.Hubs;
+using Generator.Domain.CodeGenerators.NLayer;
 using Generator.Domain.Context;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Dtos.AppSetting;
@@ -7,10 +9,10 @@ using Generator.Domain.Core.Dtos.Entity;
 using Generator.Domain.Core.Dtos.Field;
 using Generator.Domain.Core.Dtos.Relation;
 using Generator.Domain.Core.Dtos.Validation;
-using Generator.Domain.Core.Entities;
 using Generator.Domain.Core.Entities.Local;
 using Generator.Domain.Repository;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using static Generator.Domain.Core.Enums;
@@ -23,9 +25,10 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy
-                .AllowAnyOrigin() //.WithOrigins("http://localhost:5173")
+                .WithOrigins("http://localhost:5173")//.AllowAnyOrigin() //.WithOrigins("http://localhost:5173")
                 .AllowAnyHeader()
-                .AllowAnyMethod();
+                .AllowAnyMethod()
+                .AllowCredentials();
         });
 });
 
@@ -50,10 +53,15 @@ builder.Services.AddScoped<ValidatorTypeRepository>();
 builder.Services.AddScoped<ValidatorTypeParamRepository>();
 builder.Services.AddScoped<ValidationRepository>();
 
+builder.Services.AddScoped<NLayerGeneratorService>();
+
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
 app.UseCors("allow-policy");
+
+app.MapHub<ComunicationHub>("/comunication-hub");
 
 if (app.Environment.IsDevelopment())
 {
@@ -62,6 +70,105 @@ if (app.Environment.IsDevelopment())
 }
 
 //app.UseHttpsRedirection();
+
+#region Generate
+app.MapGet("/start-generate", (NLayerGeneratorService _layerGeneratorService) =>
+{
+    try
+    {
+        if (Statics.CurrentProject is null)
+            return Results.NotFound();
+
+        AppendToResults("Generation Started.");
+
+        Task.Run(() =>
+        {
+            bool stepControl = true;
+            SetProgressAmount(5);
+            stepControl = _layerGeneratorService.GenerateSolution(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate solution.");
+                return false;
+            }
+            SetProgressAmount(10);
+
+            stepControl = _layerGeneratorService.GenerateCoreLayer(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate core layer.");
+                return false;
+            }
+            SetProgressAmount(25);
+
+            stepControl = _layerGeneratorService.GenerateModelLayer(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate model layer.");
+                return false;
+            }
+            SetProgressAmount(40);
+
+            stepControl = _layerGeneratorService.GenerateDataAccessLayer(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate data access layer.");
+                return false;
+            }
+            SetProgressAmount(55);
+
+            stepControl = _layerGeneratorService.GenerateBusinessLayer(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate business layer.");
+                return false;
+            }
+            SetProgressAmount(70);
+
+            stepControl = _layerGeneratorService.GenerateAPILayer(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate API layer.");
+                return false;
+            }
+            SetProgressAmount(85);
+
+            stepControl = _layerGeneratorService.GenerateWebUIILayer(AppendToResults);
+            if (!stepControl)
+            {
+                AppendToResults("Failed to generate web UI layer.");
+                return false;
+            }
+
+            SetProgressAmount(100);
+            AppendToResults("Project Generated Successfully.");
+            return true;
+        });
+
+        return Results.Ok();
+    }
+    catch (Exception)
+    {
+        return Results.InternalServerError();
+    }
+});
+
+void AppendToResults(string message)
+{
+    using var scope = app.Services.CreateScope();
+    var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<ComunicationHub>>();
+    hubContext.Clients.All.SendAsync("AppendToResults", message).GetAwaiter().GetResult();
+    Thread.Sleep(500);
+    }
+void SetProgressAmount(int rate)
+{
+    using var scope = app.Services.CreateScope();
+    var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<ComunicationHub>>();
+    hubContext.Clients.All.SendAsync("Progress", rate).GetAwaiter().GetResult();
+    Thread.Sleep(500);
+}
+#endregion
+
 
 #region Project
 app.MapGet("/activeProject", () =>

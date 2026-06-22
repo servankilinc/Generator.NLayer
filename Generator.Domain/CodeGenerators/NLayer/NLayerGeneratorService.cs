@@ -169,23 +169,23 @@ public class NLayerGeneratorService
 
             var nLayerBusinessService = new NLayerBusinessGenerator(_appSetting);
 
-            //// 1. Create Core Class Library if not exists
-            //log(nLayerBusinessService.CreateClassLibrearyProject(_appSetting.BusinessLayerProjectName, referances: [$"../{_appSetting.DataAccessLayerProjectName}/{_appSetting.DataAccessLayerProjectName}.csproj"]));
+            // 1. Create Core Class Library if not exists
+            log(nLayerBusinessService.CreateClassLibrearyProject(_appSetting.BusinessLayerProjectName, referances: [$"../{_appSetting.DataAccessLayerProjectName}/{_appSetting.DataAccessLayerProjectName}.csproj"]));
 
-            //// 2. Static Files
-            //log(nLayerBusinessService.GenerateStaticFiles("Business", _appSetting.BusinessLayerProjectName, new
-            //{
-            //    identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
-            //}));
+            // 2. Static Files
+            log(nLayerBusinessService.GenerateStaticFiles("Business", _appSetting.BusinessLayerProjectName, new
+            {
+                identity_user_type = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository).IdentityUserType
+            }));
 
             // 3. Mappings
             log(nLayerBusinessService.GenerateMappings());
 
-            //// 5. Concretes
-            //log(nLayerBusinessService.GeneraterService());
+            // 5. Concretes
+            log(nLayerBusinessService.GeneraterService());
 
-            //// 6. Service Registrations
-            //log(nLayerBusinessService.GenerateServiceRegistrations());
+            // 6. Service Registrations
+            log(nLayerBusinessService.GenerateServiceRegistrations());
 
             return true;
         }
