@@ -1,21 +1,20 @@
 using Generator.API.SignalR.Hubs;
+using Generator.API.Services;
 using Generator.Domain.CodeGenerators.NLayer;
-using Generator.Domain.Context;
-using Generator.Domain.Core;
-using Generator.Domain.Core.Dtos.AppSetting;
-using Generator.Domain.Core.Dtos.Dto;
-using Generator.Domain.Core.Dtos.DtoField;
-using Generator.Domain.Core.Dtos.Entity;
-using Generator.Domain.Core.Dtos.Field;
-using Generator.Domain.Core.Dtos.Relation;
-using Generator.Domain.Core.Dtos.Validation;
-using Generator.Domain.Core.Entities.Local;
+using Generator.Domain.CodeGenerators.NLayer.Core;
+using Generator.Domain.CodeGenerators.NLayer.Model;
+using Generator.Domain.CodeGenerators.NLayer.DataAccess;
+using Generator.Domain.CodeGenerators.NLayer.Business;
+using Generator.Domain.CodeGenerators.NLayer.API;
+using Generator.Domain.CodeGenerators.NLayer.WebUI;
 using Generator.Domain.Repository;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR;
+using Generator.Domain.Context;
+using Generator.Domain.Services;
+using Generator.Domain.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
-using static Generator.Domain.Core.Enums;
+using Generator.API.Endpoints;
+using Generator.API.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +24,7 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy
-                .WithOrigins("http://localhost:5173")//.AllowAnyOrigin() //.WithOrigins("http://localhost:5173")
+                .WithOrigins("http://localhost:5173")
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials();
@@ -38,6 +37,25 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddOpenApi();
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IActiveProjectStore, ActiveProjectStore>();
+builder.Services.AddScoped<IProjectProvider, ProjectProvider>();
+
+builder.Services.AddDbContext<ProjectContext>((serviceProvider, optionsBuilder) =>
+{
+    var projectProvider = serviceProvider.GetRequiredService<IProjectProvider>();
+    var currentProject = projectProvider.CurrentProject;
+    if (currentProject == null)
+    {
+        optionsBuilder.UseSqlite("Data Source=fallback.db");
+    }
+    else
+    {
+        var dbPath = Path.Combine(AppContext.BaseDirectory, $"{currentProject.ProjectName.Replace(' ', '_')}Database.db");
+        optionsBuilder.UseSqlite($"Data Source={dbPath}");
+    }
+});
 
 builder.Services.AddScoped<AppSettingsRepository>();
 builder.Services.AddScoped<CrudTypeRepository>();
@@ -53,6 +71,32 @@ builder.Services.AddScoped<ValidatorTypeRepository>();
 builder.Services.AddScoped<ValidatorTypeParamRepository>();
 builder.Services.AddScoped<ValidationRepository>();
 
+builder.Services.AddScoped<AppSetting>(serviceProvider =>
+{
+    var repository = serviceProvider.GetRequiredService<AppSettingsRepository>();
+    var appSetting = repository.Get(f => f.Id == 1);
+    if (appSetting == null)
+    {
+        throw new InvalidOperationException("App Settings Not Completed To Generate!");
+    }
+    return appSetting;
+});
+
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.DotnetCliService>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.FileSystemService>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.TemplateRenderer>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.RoslynSyntaxHelper>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.ValidationRuleGenerator>();
+
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerCoreGenerator>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerModelGenerator>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerDataAccessGenerator>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerBusinessGenerator>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerAPIService>();
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerWebUIGenerator>();
+
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.GenerationPipeline>();
+
 builder.Services.AddScoped<NLayerGeneratorService>();
 
 builder.Services.AddSignalR();
@@ -60,8 +104,9 @@ builder.Services.AddSignalR();
 var app = builder.Build();
 
 app.UseCors("allow-policy");
+app.UseExceptionHandling();
 
-app.MapHub<ComunicationHub>("/comunication-hub");
+app.MapHub<CommunicationHub>("/comunication-hub");
 
 if (app.Environment.IsDevelopment())
 {
@@ -69,777 +114,13 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-//app.UseHttpsRedirection();
-
-#region Generate
-app.MapGet("/start-generate", (NLayerGeneratorService _layerGeneratorService) =>
-{
-    try
-    {
-        if (Statics.CurrentProject is null)
-            return Results.NotFound();
-
-        AppendToResults("Generation Started.");
-
-        Task.Run(() =>
-        {
-            bool stepControl = true;
-            SetProgressAmount(5);
-            stepControl = _layerGeneratorService.GenerateSolution(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate solution.");
-                return false;
-            }
-            SetProgressAmount(10);
-
-            stepControl = _layerGeneratorService.GenerateCoreLayer(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate core layer.");
-                return false;
-            }
-            SetProgressAmount(25);
-
-            stepControl = _layerGeneratorService.GenerateModelLayer(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate model layer.");
-                return false;
-            }
-            SetProgressAmount(40);
-
-            stepControl = _layerGeneratorService.GenerateDataAccessLayer(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate data access layer.");
-                return false;
-            }
-            SetProgressAmount(55);
-
-            stepControl = _layerGeneratorService.GenerateBusinessLayer(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate business layer.");
-                return false;
-            }
-            SetProgressAmount(70);
-
-            stepControl = _layerGeneratorService.GenerateAPILayer(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate API layer.");
-                return false;
-            }
-            SetProgressAmount(85);
-
-            stepControl = _layerGeneratorService.GenerateWebUIILayer(AppendToResults);
-            if (!stepControl)
-            {
-                AppendToResults("Failed to generate web UI layer.");
-                return false;
-            }
-
-            SetProgressAmount(100);
-            AppendToResults("Project Generated Successfully.");
-            return true;
-        });
-
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-void AppendToResults(string message)
-{
-    using var scope = app.Services.CreateScope();
-    var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<ComunicationHub>>();
-    hubContext.Clients.All.SendAsync("AppendToResults", message).GetAwaiter().GetResult();
-    Thread.Sleep(500);
-    }
-void SetProgressAmount(int rate)
-{
-    using var scope = app.Services.CreateScope();
-    var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<ComunicationHub>>();
-    hubContext.Clients.All.SendAsync("Progress", rate).GetAwaiter().GetResult();
-    Thread.Sleep(500);
-}
-#endregion
-
-
-#region Project
-app.MapGet("/activeProject", () =>
-{
-    try
-    {
-        if (Statics.CurrentProject is null)
-            return Results.NotFound();
-        return Results.Ok(Statics.CurrentProject);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPost("/activeProject", (int id) =>
-{
-    try
-    {
-        using var localContext = new LocalContext();
-
-        Statics.CurrentProject = localContext.Projects.FirstOrDefault(x => x.Id == id);
-
-        if (Statics.CurrentProject is null)
-            return Results.NotFound();
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/project/list", async () =>
-{
-    try
-    {
-        using var localContext = new LocalContext();
-        var result = await localContext.Projects.ToListAsync();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPost("/project", async (Project project) =>
-{
-    try
-    {
-        using var localContext = new LocalContext();
-
-        project.CreateDate = DateTime.Now;
-        await localContext.Projects.AddAsync(project);
-        await localContext.SaveChangesAsync();
-
-        return Results.Ok(project);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapDelete("/project", async (int id) =>
-{
-    try
-    {
-        using var localContext = new LocalContext();
-
-        var project = localContext.Projects.FirstOrDefault(x => x.Id == id);
-
-        if (project is null)
-            return Results.NotFound();
-
-        localContext.Projects.Remove(project);
-        await localContext.SaveChangesAsync();
-
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region AppSettings
-app.MapGet("/appSetting", (AppSettingsRepository appSettingsRepository) =>
-{
-    try
-    {
-        var result = appSettingsRepository.Get(f => f.Id == 1);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError("Don't forget to make sure you have selected a project.");
-    }
-});
-
-app.MapPut("/appSetting", (AppSettingUpdateDto updateDto, AppSettingsRepository appSettingsRepository) =>
-{
-    try
-    {
-        bool checkUser = !updateDto.IsThereUser || updateDto.UserEntityId != default;
-        bool checkRole = !updateDto.IsThereRole || updateDto.RoleEntityId != default;
-        if (!checkRole || !checkUser)
-            return Results.BadRequest("Check The Fields!");
-
-        var appSetting = appSettingsRepository.Get(f => f.Id == 1);
-        if (appSetting is null)
-            return Results.NotFound();
-
-        updateDto.MapToEntity(appSetting);
-
-        appSettingsRepository.Update(appSetting);
-        return Results.Ok(updateDto);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError("Don't forget to make sure you have selected a project.");
-    }
-});
-#endregion
-
-#region Entity
-app.MapGet("/entity/updateModel", (int entityId, EntityRepository entityRepository) =>
-{
-    try
-    {
-        var result = entityRepository.GetUpdateModel(entityId);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/entity/list/withBaseFields", (EntityRepository entityRepository) =>
-{
-    try
-    {
-        var result = entityRepository.GetAll(
-            include: i => i
-                .Include(e => e.CreateDto)
-                .Include(e => e.UpdateDto)
-                .Include(e => e.DeleteDto)
-                .Include(e => e.ReportDto)
-                .Include(e => e.BasicResponseDto)
-                .Include(e => e.DetailResponseDto)
-                .Include(e => e.Fields.Where(f => f.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Base))
-                    .ThenInclude(f => f.FieldType),
-            enableTracking: false
-        );
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPost("/entity", (EntityCreateDto createDto, EntityRepository entityRepository) =>
-{
-    try
-    {
-        if (string.IsNullOrEmpty(createDto.Name) || string.IsNullOrEmpty(createDto.TableName) || createDto.Fields.Count == 0)
-            return Results.BadRequest("Check The Fields!");
-
-        entityRepository.Create(createDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPut("/entity", (EntityUpdateDto updateDto, EntityRepository entityRepository) =>
-{
-    try
-    {
-        if (string.IsNullOrEmpty(updateDto.Name) || string.IsNullOrEmpty(updateDto.TableName))
-            return Results.BadRequest("Check The Fields!");
-
-        entityRepository.Update(updateDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapDelete("/entity", (int id, EntityRepository entityRepository) =>
-{
-    try
-    {
-        entityRepository.Delete(id);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region FieldType
-app.MapGet("/fieldType/list/onbasetype", (FieldTypeRepository fieldTypeRepository) =>
-{
-    try
-    {
-        var result = fieldTypeRepository.GetAll(filter: f => f.SourceTypeId == (byte)FieldTypeSourceEnums.Base);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region Field
-app.MapGet("/field/list/byEntity", (int entityId, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        var field = fieldRepository.GetAll(f => f.EntityId == entityId);
-        if (field is null)
-            return Results.NotFound();
-        return Results.Ok(field);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/field/list/updateModel", (int entityId, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        var field = fieldRepository.GetUpdateModels(entityId);
-        if (field is null)
-            return Results.NotFound();
-        return Results.Ok(field);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPut("/field/list", ([FromQuery] int entityId, [FromBody] List<FieldUpdateDto> updateDtos, FieldRepository fieldRepository) =>
-{
-    try
-    {
-        fieldRepository.Update(updateDtos, entityId);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region RelationType
-app.MapGet("/relationType/list", (RelationRepository relationRepository) =>
-{
-    try
-    {
-        var result = relationRepository.GetRelationTypes();
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion 
-
-#region DeleteBehaviorTypes
-app.MapGet("/deleteBehaviorType/list", (DeleteBehaviorTypeRepository deleteBehaviorTypeRepository) =>
-{
-    try
-    {
-        var result = deleteBehaviorTypeRepository.GetAll();
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion 
-
-#region Relation
-app.MapGet("/relation/list", (RelationRepository relationRepository) =>
-{
-    try
-    {
-        var result = relationRepository.GetAll(
-            include: i => i
-                .Include(x => x.PrimaryField)
-                    .ThenInclude(x => x.Entity)
-                .Include(x => x.ForeignField)
-                    .ThenInclude(x => x.Entity)
-                .Include(x => x.RelationType)
-                .Include(x => x.DeleteBehaviorType)
-        );
-
-        if (result is null)
-            return Results.NotFound();
-
-        var data = result.Select(x => new RelationDetailModel
-        {
-            Id = x.Id,
-            PrimaryEntityId = x.PrimaryField.EntityId,
-            PrimaryEntityName = x.PrimaryField.Entity.Name,
-            ForeignEntityId = x.ForeignField.EntityId,
-            ForeignEntityName = x.ForeignField.Entity.Name,
-            PrimaryFieldId = x.PrimaryFieldId,
-            PrimaryFieldName = $"{x.PrimaryField.Entity.Name}.{x.PrimaryField.Name}",
-            ForeignFieldId = x.ForeignFieldId,
-            ForeignFieldName = $"{x.ForeignField.Entity.Name}.{x.ForeignField.Name}",
-            RelationTypeId = x.RelationTypeId,
-            RelationTypeName = x.RelationType.Name,
-            DeleteBehaviorTypeId = x.DeleteBehaviorTypeId,
-            DeleteBehaviorTypeName = x.DeleteBehaviorType.Name,
-            PrimaryEntityVirPropName = x.PrimaryEntityVirPropName,
-            ForeignEntityVirPropName = x.ForeignEntityVirPropName
-        });
-        return Results.Ok(data);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/relation/list/byEntity", (int entityId, RelationRepository relationRepository) =>
-{
-    try
-    {
-        var result = relationRepository.GetAll(
-            filter: f => f.PrimaryField.EntityId == entityId || f.ForeignField.EntityId == entityId,
-            include: i => i
-                .Include(x => x.PrimaryField)
-                    .ThenInclude(x => x.Entity)
-                .Include(x => x.ForeignField)
-                    .ThenInclude(x => x.Entity)
-                .Include(x => x.RelationType)
-                .Include(x => x.DeleteBehaviorType)
-        );
-
-        if (result is null)
-            return Results.NotFound();
-
-        var data = result.Select(x => new RelationDetailModel
-        {
-            Id = x.Id,
-            PrimaryFieldId = x.PrimaryFieldId,
-            PrimaryFieldName = $"{x.PrimaryField.Entity.Name}.{x.PrimaryField.Name}",
-            ForeignFieldId = x.ForeignFieldId,
-            ForeignFieldName = $"{x.ForeignField.Entity.Name}.{x.ForeignField.Name}",
-            RelationTypeId = x.RelationTypeId,
-            RelationTypeName = x.RelationType.Name,
-            DeleteBehaviorTypeId = x.DeleteBehaviorTypeId,
-            DeleteBehaviorTypeName = x.DeleteBehaviorType.Name,
-            PrimaryEntityVirPropName = x.PrimaryEntityVirPropName,
-            ForeignEntityVirPropName = x.ForeignEntityVirPropName
-        });
-        return Results.Ok(data);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/relation/list/behindEntities", (int firstEntityId, int secondEntityId, RelationRepository relationRepository) =>
-{
-    try
-    {
-        var result = relationRepository.GetRelationsBehindEntities(secondEntityId, firstEntityId)
-            .Select(x => new RelationVisualModel
-            {
-                Id = x.Id,
-                Name = x.PrimaryField.EntityId != firstEntityId ? $"(...).{x.ForeignEntityVirPropName}" : $"(...).{x.PrimaryEntityVirPropName}"
-            });
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPost("/relation", (RelationCreateDto createDto, RelationRepository relationRepository) =>
-{
-    try
-    {
-        if (createDto.PrimaryFieldId == default || createDto.ForeignFieldId == default || createDto.RelationTypeId == default || createDto.DeleteBehaviorTypeId == default || string.IsNullOrEmpty(createDto.PrimaryEntityVirPropName) || string.IsNullOrEmpty(createDto.ForeignEntityVirPropName))
-            return Results.BadRequest("Check The Fields!");
-        relationRepository.AddRelation(createDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPut("/relation", (RelationUpdateDto updateDto, RelationRepository relationRepository) =>
-{
-    try
-    {
-        if (updateDto.PrimaryFieldId == default || updateDto.ForeignFieldId == default || updateDto.RelationTypeId == default || updateDto.DeleteBehaviorTypeId == default || string.IsNullOrEmpty(updateDto.PrimaryEntityVirPropName) || string.IsNullOrEmpty(updateDto.ForeignEntityVirPropName))
-            return Results.BadRequest("Check The Fields!");
-        relationRepository.UpdateRelation(updateDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapDelete("/relation", (int id, RelationRepository relationRepository) =>
-{
-    try
-    {
-        var relation = relationRepository.Get(f => f.Id == id);
-        if (relation is null)
-            return Results.NotFound();
-        relationRepository.Delete(relation);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region CrudType
-app.MapGet("/crudtype/list", (CrudTypeRepository crudTypeRepository) =>
-{
-    try
-    {
-        var result = crudTypeRepository.GetAll(enableTracking: false);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region Dto
-app.MapGet("/dto/updateModel", (int dtoId, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        var result = dtoRepository.GetUpdateModel(dtoId);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/dto/list/byEntity", (int entityId, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        var result = dtoRepository.GetAll(filter: f => f.RelatedEntityId == entityId, include: i => i.Include(x => x.CrudType), enableTracking: false);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapGet("/dto/list/detail", (int entityId, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        var result = dtoRepository.GetDetailList(f => f.RelatedEntityId == entityId);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPost("/dto", (DtoCreateDto createDto, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        if (string.IsNullOrEmpty(createDto.Name) || createDto.RelatedEntityId == default || createDto.CrudTypeId == default)
-            return Results.BadRequest("Check The Fields!");
-
-        dtoRepository.CreateByFields(createDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPut("/dto", (DtoUpdateDto updateDto, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        if (string.IsNullOrEmpty(updateDto.Name) || updateDto.RelatedEntityId == default || updateDto.CrudTypeId == default || updateDto.Id == default)
-            return Results.BadRequest("Check The Fields!");
-        dtoRepository.Update(updateDto);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapDelete("/dto", (int id, DtoRepository dtoRepository) =>
-{
-    try
-    {
-        dtoRepository.Delete(id);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region DtoField
-app.MapGet("/dtofield/list/updateModel", (int dtoId, DtoFieldRepository dtoFieldRepository) =>
-{
-    try
-    {
-        var dtofields = dtoFieldRepository.GetUpdateDtos(dtoId);
-        if (dtofields is null)
-            return Results.NotFound();
-        return Results.Ok(dtofields);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPut("/dtofield/list", ([FromQuery] int dtoId, [FromBody] List<DtoFieldUpdateDto> updateDtos, DtoFieldRepository dtoFieldRepository) =>
-{
-    try
-    {
-        dtoFieldRepository.Update(updateDtos, dtoId);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region ValidatorType
-app.MapGet("/validatorType/list", (ValidatorTypeRepository validatorTypeRepository) =>
-{
-    try
-    {
-        var result = validatorTypeRepository.GetAll(include: i => i.Include(x => x.ValidatorTypeParams), enableTracking: false);
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region ValidatorTypeParams
-app.MapGet("/validatorTypeParam/list", (int validatorTypeId, ValidatorTypeParamRepository validatorTypeParamRepository) =>
-{
-    try
-    {
-        var result = validatorTypeParamRepository.GetAll(filter: f => f.ValidatorTypeId == validatorTypeId, include: i => i.Include(i => i.ValidatorType));
-        if (result is null)
-            return Results.NotFound();
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
-
-#region Validation
-app.MapGet("/validation/list/updateModel", (int dtoFieldId, ValidationRepository validationRepository) =>
-{
-    try
-    {
-        var result = validationRepository.GetUpdateDtos(dtoFieldId);
-        return Results.Ok(result);
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-
-app.MapPost("/validation/list", (List<ValidationUpdateDto> updateDtos, ValidationRepository validationRepository) =>
-{
-    try
-    {
-        if (
-            updateDtos.Any(f => f.ValidatorTypeId == default) ||
-            updateDtos.Any(f => f.DtoFieldId == default) ||
-            updateDtos.DistinctBy(f => f.DtoFieldId).ToList().Count > 1 ||
-            updateDtos.Any(f => f.ValidationParams != null && f.ValidationParams.Any(fi => string.IsNullOrEmpty(fi.Value)))
-        )
-            return Results.BadRequest("Check The Fields!");
-
-        validationRepository.Update(updateDtos);
-        return Results.Ok();
-    }
-    catch (Exception)
-    {
-        return Results.InternalServerError();
-    }
-});
-#endregion
+app.MapProjectEndpoints();
+app.MapEntityEndpoints();
+app.MapFieldEndpoints();
+app.MapRelationEndpoints();
+app.MapDtoEndpoints();
+app.MapValidationEndpoints();
+app.MapAppSettingEndpoints();
+app.MapGenerationEndpoints();
 
 app.Run();
