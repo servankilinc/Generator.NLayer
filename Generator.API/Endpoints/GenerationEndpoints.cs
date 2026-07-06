@@ -11,14 +11,9 @@ public static class GenerationEndpoints
 {
     public static void MapGenerationEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/start-generate", (IServiceProvider serviceProvider, IHubContext<CommunicationHub> hubContext) =>
+        app.MapGet("/start-generate", (IServiceProvider serviceProvider, IHubContext<CommunicationHub> hubContext, IActiveProjectStore activeProjectStore) =>
         {
-            Project? project;
-            using (var requestScope = serviceProvider.CreateScope())
-            {
-                var requestProjectProvider = requestScope.ServiceProvider.GetRequiredService<IProjectProvider>();
-                project = requestProjectProvider.CurrentProject;
-            }
+            Project? project = activeProjectStore.ActiveProject;
 
             if (project is null)
                 return Results.NotFound();
@@ -28,9 +23,6 @@ public static class GenerationEndpoints
             Task.Run(() =>
             {
                 using var generationScope = serviceProvider.CreateScope();
-                var provider = generationScope.ServiceProvider.GetRequiredService<IProjectProvider>();
-                provider.CurrentProject = project;
-
                 var layerGeneratorService = generationScope.ServiceProvider.GetRequiredService<NLayerGeneratorService>();
 
                 SetProgressAmount(hubContext, 0);

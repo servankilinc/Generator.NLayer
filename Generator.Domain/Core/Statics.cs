@@ -1,11 +1,9 @@
-﻿using Generator.Domain.Core.Entities.Local;
+using Generator.Domain.Core.Entities.Local;
 
 namespace Generator.Domain.Core;
 
 public static class Statics
 {
-    public static Project? CurrentProject { get; set; } = default;
-
     public static HashSet<string> nonReferanceTypes = new()
     {
         "int", "long", "float", "double", "bool", "char", "byte", "Guid" // "DateTime", "DateOnly", "TimeOnly"

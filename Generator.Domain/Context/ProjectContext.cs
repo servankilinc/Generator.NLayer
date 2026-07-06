@@ -1,6 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Entities;
+using Generator.Domain.Services;
 
 namespace Generator.Domain.Context;
 
@@ -14,26 +15,16 @@ public class ProjectContext : DbContext
 
 
     // Dynamic Version
-    private static string? lastMigratedDb = string.Empty;
-    public ProjectContext() : base(GetOptions())
+    private readonly string? _sqliteDbPath;
+
+    public ProjectContext(DbContextOptions<ProjectContext> options, IActiveProjectStore activeProjectStore) : base(options)
     {
-        if (lastMigratedDb != Statics.CurrentProject?.ProjectName)
+        var projectName = activeProjectStore.ActiveProject?.ProjectName;
+        if (projectName != null)
         {
-            lastMigratedDb = Statics.CurrentProject?.ProjectName;
+            _sqliteDbPath = Path.Combine(AppContext.BaseDirectory, "Databases", $"{projectName}.db");
             this.Database.Migrate();
         }
-    }
-
-    private static DbContextOptions<ProjectContext> GetOptions()
-    {
-        if (Statics.CurrentProject == default) throw new Exception("Project Configurations Could not Uploaded");
-
-        var optionsBuilder = new DbContextOptionsBuilder<ProjectContext>();
-
-        var dbPath = Path.Combine(AppContext.BaseDirectory, $"{Statics.CurrentProject.ProjectName.Replace(' ', '_')}Database.db");
-        optionsBuilder.UseSqlite($"Data Source={dbPath}");
-
-        return optionsBuilder.Options;
     }
 
     public DbSet<AppSetting> AppSettings { get; set; }

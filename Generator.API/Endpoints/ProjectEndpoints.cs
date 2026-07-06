@@ -10,9 +10,9 @@ public static class ProjectEndpoints
 {
     public static void MapProjectEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/activeProject", (IProjectProvider projectProvider) =>
+        app.MapGet("/activeProject", (IActiveProjectStore activeProjectStore) =>
         {
-            var current = projectProvider.CurrentProject;
+            var current = activeProjectStore.ActiveProject;
             if (current is null)
                 return Results.NotFound();
             return Results.Ok(current);

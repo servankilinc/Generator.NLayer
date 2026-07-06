@@ -1,5 +1,4 @@
 using Generator.API.SignalR.Hubs;
-using Generator.API.Services;
 using Generator.Domain.CodeGenerators.NLayer;
 using Generator.Domain.CodeGenerators.NLayer.Core;
 using Generator.Domain.CodeGenerators.NLayer.Model;
@@ -44,8 +43,8 @@ builder.Services.AddScoped<IProjectProvider, ProjectProvider>();
 
 builder.Services.AddDbContext<ProjectContext>((serviceProvider, optionsBuilder) =>
 {
-    var projectProvider = serviceProvider.GetRequiredService<IProjectProvider>();
-    var currentProject = projectProvider.CurrentProject;
+    var activeProjectStore = serviceProvider.GetRequiredService<IActiveProjectStore>();
+    var currentProject = activeProjectStore.ActiveProject;
     if (currentProject == null)
     {
         optionsBuilder.UseSqlite("Data Source=fallback.db");
