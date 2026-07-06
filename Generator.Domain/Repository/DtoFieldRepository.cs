@@ -1,4 +1,4 @@
-﻿using Generator.Domain.Context;
+using Generator.Domain.Context;
 using Generator.Domain.Core.Dtos.DtoField;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Repository.Base;
@@ -8,10 +8,13 @@ namespace Generator.Domain.Repository;
 
 public class DtoFieldRepository : EFRepositoryBase<DtoField>
 {
+    public DtoFieldRepository(ProjectContext context) : base(context)
+    {
+    }
+
     public List<DtoFieldRelations> GetDtoFieldRelations(int dtoFieldId)
     {
-        using var context = new ProjectContext();
-        var data = context.DtoFieldRelations
+        var data = _context.DtoFieldRelations
                 .Where(f => f.DtoFieldId == dtoFieldId)
                 .Include(x => x.DtoField)
                     .ThenInclude(x => x.SourceField)
@@ -28,10 +31,9 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
     public List<DtoFieldUpdateDto> GetUpdateDtos(int dtoId)
     {
-        using var context = new ProjectContext();
         var result = new List<DtoFieldUpdateDto>();
 
-        var dtoFields = context.DtoFields
+        var dtoFields = _context.DtoFields
                 .Where(f => f.DtoId == dtoId)
                 .Include(x => x.SourceField)
                 .Include(x => x.Dto)
@@ -50,7 +52,7 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
         foreach (var dtoField in dtoFields)
         {
-            var dtoFieldRelations = context.DtoFieldRelations
+            var dtoFieldRelations = _context.DtoFieldRelations
                 .Where(f => f.DtoFieldId == dtoField.Id)
                 .Include(x => x.DtoField)
                     .ThenInclude(x => x.SourceField)
@@ -85,11 +87,10 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
     public void Add(DtoFieldCreateDto createDto)
     {
-        using var context = new ProjectContext();
-        var transaction = context.Database.BeginTransaction();
+        using var transaction = _context.Database.BeginTransaction();
         try
         {
-            HandleInsertDtoField(context, createDto);
+            HandleInsertDtoField(_context, createDto);
             transaction.Commit();
         }
         catch (Exception)
@@ -100,12 +101,10 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
     public void Update(DtoFieldUpdateDto updateDto)
     {
-        using var context = new ProjectContext();
-        var transaction = context.Database.BeginTransaction();
+        using var transaction = _context.Database.BeginTransaction();
         try
         {
-            HandleUpdateDtoField(context, updateDto);
-
+            HandleUpdateDtoField(_context, updateDto);
             transaction.Commit();
         }
         catch (Exception)
@@ -116,21 +115,20 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
     public void Update(List<DtoFieldUpdateDto> dtoFieldsToUpdate, int dtoId)
     {
-        using var context = new ProjectContext();
-        var transaction = context.Database.BeginTransaction();
+        using var transaction = _context.Database.BeginTransaction();
         try
         {
-            var existDtoFields = context.DtoFields.Where(f => f.DtoId == dtoId);
+            var existDtoFields = _context.DtoFields.Where(f => f.DtoId == dtoId);
 
             // Delete DtoFields that are not in the updateDtos list
             foreach (var dtoField in existDtoFields)
             {
                 if (!dtoFieldsToUpdate.Any(f => f.Id == dtoField.Id))
                 {
-                    context.DtoFields.Remove(dtoField);
+                    _context.DtoFields.Remove(dtoField);
                 }
             }
-            context.SaveChanges();
+            _context.SaveChanges();
 
             foreach (var updateDto in dtoFieldsToUpdate)
             {
@@ -138,7 +136,7 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
                 if (existData == null)
                 {
-                    HandleInsertDtoField(context, new DtoFieldCreateDto
+                    HandleInsertDtoField(_context, new DtoFieldCreateDto
                     {
                         DtoId = dtoId,
                         Name = updateDto.Name,
@@ -151,10 +149,10 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
                 }
                 else
                 {
-                    HandleUpdateDtoField(context, updateDto);
+                    HandleUpdateDtoField(_context, updateDto);
                 }
             }
-            context.SaveChanges();
+            _context.SaveChanges();
 
             transaction.Commit();
         }
@@ -197,7 +195,6 @@ public class DtoFieldRepository : EFRepositoryBase<DtoField>
 
     private void HandleUpdateDtoField(ProjectContext context, DtoFieldUpdateDto updateDto)
     {
-
         var existData = context.DtoFields.Include(i => i.Dto).FirstOrDefault(f => f.Id == updateDto.Id);
 
         if (existData == null)

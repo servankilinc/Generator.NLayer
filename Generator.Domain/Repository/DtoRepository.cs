@@ -1,4 +1,4 @@
-﻿using Generator.Domain.Context;
+using Generator.Domain.Context;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Dtos.Dto;
 using Generator.Domain.Core.Dtos.DtoField;
@@ -11,11 +11,13 @@ namespace Generator.Domain.Repository;
 
 public class DtoRepository : EFRepositoryBase<Dto>
 {
+    public DtoRepository(ProjectContext context) : base(context)
+    {
+    }
+
     public DtoUpdateDto GetUpdateModel(int entityId)
     {
-        using var context = new ProjectContext();
-
-        var existEntity = context.Dtos
+        var existEntity = _context.Dtos
             .Select(e => new DtoUpdateDto
             {
                 Id = e.Id,
@@ -32,47 +34,7 @@ public class DtoRepository : EFRepositoryBase<Dto>
 
     public List<DtoDetailResponseDto> GetDetailList(Expression<Func<Dto, bool>> expresion)
     {
-        using var context = new ProjectContext();
-        //return context.Dtos
-        //        .Where(expresion)
-        //        .Include(i => i.RelatedEntity)
-        //        .Include(i => i.CrudType)
-        //        .Include(i => i.DtoFields)
-        //            .ThenInclude(df => df.SourceField)
-        //                .ThenInclude(sf => sf.FieldType)
-        //        .Include(i => i.DtoFields)
-        //            .ThenInclude(df => df.SourceField)
-        //                .ThenInclude(sf => sf.Entity)
-        //        .Include(i => i.DtoFields)
-        //            .ThenInclude(df => df.DtoFieldRelations)
-        //        .Select(x => new DtoDetailResponseDto
-        //        {
-        //            Id = x.Id,
-        //            Name = x.Name,
-        //            RelatedEntityName = x.RelatedEntity.Name,
-        //            CrudTypeName = x.CrudType.Name,
-        //            DtoFields = x.DtoFields.Select(y => new DtoFieldResponseDto
-        //            {
-        //                Id = y.Id,
-        //                Name = y.Name,
-        //                DtoId = x.Id,
-        //                SourceFieldName = y.SourceField.Name,
-        //                EntityName = y.SourceField.Entity.Name,
-        //                FieldTypeName = y.SourceField.FieldType.Name,
-        //                IsRequired = y.IsRequired,
-        //                IsList = y.IsList,
-        //                IsSourceFromForeignEntity = x.RelatedEntityId != y.SourceField.EntityId,
-        //                IsThereRelations = y.DtoFieldRelations != null && y.DtoFieldRelations.Any(),
-        //                DtoFieldRelationsPath =
-        //                    y.DtoFieldRelations != null ?
-        //                        string.Join(",\n", y.DtoFieldRelations.OrderBy(o => o.SequenceNo)
-        //                            .Select(dr => $"{dr.Relation.PrimaryEntityVirPropName}.{dr.Relation.ForeignEntityVirPropName}")) :
-        //                        string.Empty
-        //            }).ToList()
-        //        }).ToList();
-
-        var data = context.Dtos
-            .Where(expresion)
+        var data = _context.Dtos
             .Where(expresion)
             .Include(i => i.RelatedEntity)
             .Include(i => i.CrudType)
@@ -92,8 +54,8 @@ public class DtoRepository : EFRepositoryBase<Dto>
         {
             Id = x.Id,
             Name = x.Name,
-            RelatedEntityName = x.RelatedEntity?.Name,
-            CrudTypeName = x.CrudType?.Name,
+            RelatedEntityName = x.RelatedEntity?.Name ?? string.Empty,
+            CrudTypeName = x.CrudType?.Name ?? string.Empty,
             DtoFields = x.DtoFields.Select(y => new DtoFieldResponseDto
             {
                 Id = y.Id,
@@ -117,7 +79,6 @@ public class DtoRepository : EFRepositoryBase<Dto>
 
     public void CreateByFields(DtoCreateDto createDto)
     {
-        using var _context = new ProjectContext();
         using var transaction = _context.Database.BeginTransaction();
         try
         {
@@ -169,7 +130,6 @@ public class DtoRepository : EFRepositoryBase<Dto>
                     });
                 }
                 _context.SaveChanges();
-
             }
 
             transaction.Commit();
@@ -183,15 +143,14 @@ public class DtoRepository : EFRepositoryBase<Dto>
 
     public void Update(DtoUpdateDto updateModel)
     {
-        using var context = new ProjectContext();
-        var existData = context.Dtos.FirstOrDefault(f => f.Id == updateModel.Id);
+        var existData = _context.Dtos.FirstOrDefault(f => f.Id == updateModel.Id);
         if (existData == null) throw new Exception("Data to update not found!");
 
         bool nameChanged = existData.Name != updateModel.Name;
         bool entityIdChanged = existData.RelatedEntityId != updateModel.RelatedEntityId;
 
-        FieldType? existFieldType = context.FieldTypes.FirstOrDefault(f => f.Name == existData.Name && f.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto);
-        Field? existField = context.Fields.FirstOrDefault(f => f.Name == existData.Name && f.EntityId == existData.RelatedEntityId);
+        FieldType? existFieldType = _context.FieldTypes.FirstOrDefault(f => f.Name == existData.Name && f.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto);
+        Field? existField = _context.Fields.FirstOrDefault(f => f.Name == existData.Name && f.EntityId == existData.RelatedEntityId);
         if (nameChanged)
         {
             if (existFieldType != null) existFieldType.Name = updateModel.Name;
@@ -206,32 +165,30 @@ public class DtoRepository : EFRepositoryBase<Dto>
             existData.RelatedEntityId = updateModel.RelatedEntityId;
         }
 
-        if (existField != null) context.Update(existField);
-        if (existFieldType != null) context.Update(existFieldType);
+        if (existField != null) _context.Update(existField);
+        if (existFieldType != null) _context.Update(existFieldType);
 
         existData.CrudTypeId = updateModel.CrudTypeId;
 
-        context.Update(existData);
-        context.SaveChanges();
+        _context.Update(existData);
+        _context.SaveChanges();
     }
 
     public void Delete(int id)
     {
-        using var context = new ProjectContext();
-
-        Dto? dto = context.Dtos.FirstOrDefault(f => f.Id == id);
+        Dto? dto = _context.Dtos.FirstOrDefault(f => f.Id == id);
 
         if (dto == null) throw new Exception("Data not found!");
 
-        FieldType? fieldType = context.FieldTypes.FirstOrDefault(f => f.Name == dto.Name && f.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto);
-        Field? field = context.Fields.FirstOrDefault(f => f.Name == dto.Name && f.EntityId == dto.RelatedEntityId);
+        FieldType? fieldType = _context.FieldTypes.FirstOrDefault(f => f.Name == dto.Name && f.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto);
+        Field? field = _context.Fields.FirstOrDefault(f => f.Name == dto.Name && f.EntityId == dto.RelatedEntityId);
 
         if (fieldType == null || field == null) throw new Exception("Related Data(s) not found!");
 
-        context.Remove(dto);
-        context.Remove(field);
-        context.Remove(fieldType);
+        _context.Remove(dto);
+        _context.Remove(field);
+        _context.Remove(fieldType);
 
-        context.SaveChanges();
+        _context.SaveChanges();
     }
 }

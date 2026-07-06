@@ -39,7 +39,6 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IActiveProjectStore, ActiveProjectStore>();
-builder.Services.AddScoped<IProjectProvider, ProjectProvider>();
 
 builder.Services.AddDbContext<ProjectContext>((serviceProvider, optionsBuilder) =>
 {

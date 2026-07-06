@@ -1,4 +1,4 @@
-﻿using Generator.Domain.Context;
+using Generator.Domain.Context;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Dtos.Entity;
 using Generator.Domain.Core.Entities;
@@ -8,9 +8,12 @@ namespace Generator.Domain.Repository;
 
 public class EntityRepository : EFRepositoryBase<Entity>
 {
+    public EntityRepository(ProjectContext context) : base(context)
+    {
+    }
+
     public void Create(EntityCreateDto createDto)
     {
-        using var _context = new ProjectContext();
         using var transaction = _context.Database.BeginTransaction();
         try
         {
@@ -61,9 +64,7 @@ public class EntityRepository : EFRepositoryBase<Entity>
 
     public EntityUpdateDto GetUpdateModel(int entityId)
     {
-        using var context = new ProjectContext();
-
-        var existEntity = context.Entities
+        var existEntity = _context.Entities
             .Select(e => new EntityUpdateDto
             {
                 Id = e.Id,
@@ -88,9 +89,7 @@ public class EntityRepository : EFRepositoryBase<Entity>
 
     public Entity Update(EntityUpdateDto updateDto)
     {
-        using var context = new ProjectContext();
-
-        var existData = context.Entities.FirstOrDefault(f => f.Id == updateDto.Id);
+        var existData = _context.Entities.FirstOrDefault(f => f.Id == updateDto.Id);
         if (existData == null) throw new Exception("Data to update not found");
 
         existData.Name = updateDto.Name;
@@ -107,19 +106,17 @@ public class EntityRepository : EFRepositoryBase<Entity>
         existData.Auditable = updateDto.Auditable;
         existData.Archivable = updateDto.Archivable;
 
-        context.Entities.Update(existData);
-        context.SaveChanges();
+        _context.Entities.Update(existData);
+        _context.SaveChanges();
         return existData;
     }
 
     public void Delete(int id)
     {
-        using var context = new ProjectContext();
-
-        var existData = context.Entities.FirstOrDefault(f => f.Id == id);
+        var existData = _context.Entities.FirstOrDefault(f => f.Id == id);
         if (existData == null) throw new Exception("Data to delete not found");
 
-        context.Entities.Remove(existData);
-        context.SaveChanges();
+        _context.Entities.Remove(existData);
+        _context.SaveChanges();
     }
 }

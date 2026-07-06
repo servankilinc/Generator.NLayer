@@ -1,4 +1,4 @@
-﻿using Generator.Domain.Context;
+using Generator.Domain.Context;
 using Generator.Domain.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Generator.Domain.Core.Dtos.Relation;
@@ -8,18 +8,13 @@ namespace Generator.Domain.Repository;
 
 public class RelationRepository : EFRepositoryBase<Relation>
 {
+    public RelationRepository(ProjectContext context) : base(context)
+    {
+    }
+
     public List<Relation> GetRelationsOnPrimary(int entityId)
     {
-        using var _context = new ProjectContext();
         var fieldsOfEntities = _context.Fields.Where(f => f.EntityId == entityId).AsNoTracking().Select(d => d.Id).ToList();
-        //return _context.Relations
-        //        .Where(f => fieldsOfEntities.Contains(f.PrimaryFieldId))
-        //        .Include(i => i.ForeignField)
-        //            .ThenInclude(ti => ti.Entity)
-        //        .Include(i => i.PrimaryField)
-        //            .ThenInclude(ti => ti.Entity)
-        //        .AsNoTracking()
-        //        .ToList(); // efcheck
 
         var query = _context.Relations
               .Include(i => i.ForeignField)
@@ -32,16 +27,7 @@ public class RelationRepository : EFRepositoryBase<Relation>
 
     public List<Relation> GetRelationsOnForeign(int entityId)
     {
-        using var _context = new ProjectContext();
         var fieldsOfEntities = _context.Fields.Where(f => f.EntityId == entityId).AsNoTracking().Select(d => d.Id).ToList();
-        //return _context.Relations
-        //        .Where(f => fieldsOfEntities.Contains(f.ForeignFieldId))
-        //        .Include(i => i.ForeignField)
-        //            .ThenInclude(ti => ti.Entity)
-        //        .Include(i => i.PrimaryField)
-        //            .ThenInclude(ti => ti.Entity)
-        //        .AsNoTracking()
-        //        .ToList(); // efcheck
 
         var query = _context.Relations
              .Include(i => i.ForeignField)
@@ -54,17 +40,12 @@ public class RelationRepository : EFRepositoryBase<Relation>
 
     public List<Relation> GetRelationsBehindEntities(int entityId_ofPrimaryField, int entityId_ofForeignField)
     {
-        using var _context = new ProjectContext();
-        // category Id primary 
-        // blog CategoryId foreign
         return _context.Relations
           .Include(r => r.PrimaryField)
               .ThenInclude(f => f.Entity)
           .Include(r => r.ForeignField)
               .ThenInclude(f => f.Entity)
           .Where(r =>
-                //r.RelationTypeId == (int)RelationTypeEnums.OneToMany ? 
-                //    (r.ForeignField.Entity.Id == entityId_ofForeignField && r.PrimaryField.Entity.Id == entityId_ofPrimaryField) :
                 (
                     (r.ForeignField.Entity.Id == entityId_ofForeignField && r.PrimaryField.Entity.Id == entityId_ofPrimaryField) ||
                     (r.ForeignField.Entity.Id == entityId_ofPrimaryField && r.PrimaryField.Entity.Id == entityId_ofForeignField)
@@ -74,7 +55,6 @@ public class RelationRepository : EFRepositoryBase<Relation>
 
     public void AddRelation(RelationCreateDto createDto)
     {
-        using var _context = new ProjectContext();
         _context.Relations.Add(new Relation
         {
             PrimaryFieldId = createDto.PrimaryFieldId,
@@ -89,7 +69,6 @@ public class RelationRepository : EFRepositoryBase<Relation>
 
     public void UpdateRelation(RelationUpdateDto updateDto)
     {
-        using var _context = new ProjectContext();
         var relation = _context.Relations.FirstOrDefault(f => f.Id == updateDto.Id);
         if (relation == null) throw new Exception("Relation not found to update.");
 
@@ -106,7 +85,6 @@ public class RelationRepository : EFRepositoryBase<Relation>
 
     public List<RelationType> GetRelationTypes()
     {
-        using var _context = new ProjectContext();
         return _context.RelationTypes.ToList();
     }
 }

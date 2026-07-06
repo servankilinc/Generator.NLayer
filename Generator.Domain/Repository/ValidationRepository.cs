@@ -1,4 +1,4 @@
-﻿using Generator.Domain.Context;
+using Generator.Domain.Context;
 using Generator.Domain.Core.Dtos.Validation;
 using Generator.Domain.Core.Dtos.ValidationParam;
 using Generator.Domain.Core.Entities;
@@ -9,9 +9,12 @@ namespace Generator.Domain.Repository;
 
 public class ValidationRepository : EFRepositoryBase<Validation>
 {
+    public ValidationRepository(ProjectContext context) : base(context)
+    {
+    }
+
     public List<ValidationUpdateDto> GetUpdateDtos(int dtoFieldId)
     {
-        using var _context = new ProjectContext();
         var data = _context.Validations
                 .Include(i => i.DtoField)
                 .Include(i => i.ValidationParams)
@@ -24,19 +27,18 @@ public class ValidationRepository : EFRepositoryBase<Validation>
             DtoFieldId = x.DtoFieldId,
             ValidatorTypeId = x.ValidatorTypeId,
             ErrorMessage = x.ErrorMessage,
-            ValidationParams = x.ValidationParams.Select(vp => new ValidationParamUpdateDto
+            ValidationParams = x.ValidationParams?.Select(vp => new ValidationParamUpdateDto
             {
                 ValidationId = x.Id,
                 ValidatorTypeParamId = vp.ValidatorTypeParamId,
-                Key = vp.ValidatorTypeParam.Key,
+                Key = vp.ValidatorTypeParam?.Key ?? "",
                 Value = vp.Value
-            }).ToList()
+            }).ToList() ?? new List<ValidationParamUpdateDto>()
         }).ToList();
     }
 
     public void Update(List<ValidationUpdateDto> list)
     {
-        using var _context = new ProjectContext();
         using var transaction = _context.Database.BeginTransaction();
         try
         {
@@ -110,7 +112,6 @@ public class ValidationRepository : EFRepositoryBase<Validation>
                         }
                         _context.SaveChanges();
                     }
-
                 }
             }
 

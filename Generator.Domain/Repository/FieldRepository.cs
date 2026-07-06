@@ -1,4 +1,4 @@
-﻿using Generator.Domain.Context;
+using Generator.Domain.Context;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Core.Dtos.Field;
 using Generator.Domain.Repository.Base;
@@ -9,11 +9,13 @@ namespace Generator.Domain.Repository;
 
 public class FieldRepository : EFRepositoryBase<Field>
 {
+    public FieldRepository(ProjectContext context) : base(context)
+    {
+    }
+
     public List<FieldUpdateDto> GetUpdateModels(int entityId)
     {
-        using var context = new ProjectContext();
-
-        var existData = context.Fields.Where(f => f.EntityId == entityId && f.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base).Include(i => i.FieldType).Select(f => new FieldUpdateDto
+        var existData = _context.Fields.Where(f => f.EntityId == entityId && f.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base).Include(i => i.FieldType).Select(f => new FieldUpdateDto
         {
             Id = f.Id,
             FieldTypeId = f.FieldTypeId,
@@ -28,8 +30,6 @@ public class FieldRepository : EFRepositoryBase<Field>
 
     public Field Add(FieldCreateDto fieldCreateDto)
     {
-        using var context = new ProjectContext();
-
         var data = new Field
         {
             FieldTypeId = fieldCreateDto.FieldTypeId,
@@ -40,16 +40,14 @@ public class FieldRepository : EFRepositoryBase<Field>
             IsList = fieldCreateDto.IsList,
             Filterable = fieldCreateDto.Filterable
         };
-        context.Set<Field>().Add(data);
-        context.SaveChanges();
+        _context.Set<Field>().Add(data);
+        _context.SaveChanges();
         return data;
     }
 
     public Field Update(FieldUpdateDto updateDto)
     {
-        using var context = new ProjectContext();
-
-        var existData = context.Fields.FirstOrDefault(f => f.Id == updateDto.Id);
+        var existData = _context.Fields.FirstOrDefault(f => f.Id == updateDto.Id);
         if (existData == null) throw new Exception("Data to update not found");
 
         existData.FieldTypeId = updateDto.FieldTypeId;
@@ -59,30 +57,28 @@ public class FieldRepository : EFRepositoryBase<Field>
         existData.IsList = updateDto.IsList;
         existData.Filterable = updateDto.Filterable;
 
-        context.Fields.Update(existData);
-        context.SaveChanges();
+        _context.Fields.Update(existData);
+        _context.SaveChanges();
         return existData;
     }
 
     public void Update(List<FieldUpdateDto> fieldsToUpdate, int entityId)
     {
-        using var context = new ProjectContext();
-        var transaction = context.Database.BeginTransaction();
+        var transaction = _context.Database.BeginTransaction();
 
         try
         {
-            var existFields = context.Fields.Where(f => f.EntityId == entityId && f.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base).Include(i => i.FieldType);
-
+            var existFields = _context.Fields.Where(f => f.EntityId == entityId && f.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base).Include(i => i.FieldType);
 
             // delete not exist list
             foreach (var existField in existFields)
             {
                 if (!fieldsToUpdate.Any(f => f.Id != default && f.Id == existField.Id))
                 {
-                    context.Fields.Remove(existField);
+                    _context.Fields.Remove(existField);
                 }
             }
-            context.SaveChanges();
+            _context.SaveChanges();
 
             foreach (var updateDto in fieldsToUpdate)
             {
@@ -90,7 +86,7 @@ public class FieldRepository : EFRepositoryBase<Field>
 
                 if (existData == null)
                 {
-                    context.Fields.Add(new Field
+                    _context.Fields.Add(new Field
                     {
                         EntityId = entityId,
                         FieldTypeId = updateDto.FieldTypeId,
@@ -110,10 +106,10 @@ public class FieldRepository : EFRepositoryBase<Field>
                     existData.IsList = updateDto.IsList;
                     existData.Filterable = updateDto.Filterable;
 
-                    context.Fields.Update(existData);
+                    _context.Fields.Update(existData);
                 }
             }
-            context.SaveChanges();
+            _context.SaveChanges();
 
             transaction.Commit();
         }

@@ -1,4 +1,4 @@
-﻿namespace Generator.Domain.Core.Dtos.Relation;
+namespace Generator.Domain.Core.Dtos.Relation;
 
 public class RelationUpdateDto
 {
@@ -17,7 +17,7 @@ public class RelationUpdateDto
         relation.ForeignFieldId = ForeignFieldId;
         relation.RelationTypeId = RelationTypeId;
         relation.DeleteBehaviorTypeId = DeleteBehaviorTypeId;
-        relation.PrimaryEntityVirPropName = PrimaryEntityVirPropName;
-        relation.ForeignEntityVirPropName = ForeignEntityVirPropName;
+        relation.PrimaryEntityVirPropName = PrimaryEntityVirPropName ?? string.Empty;
+        relation.ForeignEntityVirPropName = ForeignEntityVirPropName ?? string.Empty;
     }
 }
