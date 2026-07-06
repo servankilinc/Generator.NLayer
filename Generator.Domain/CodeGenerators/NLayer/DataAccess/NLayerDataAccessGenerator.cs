@@ -3,7 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
-using Generator.Domain.CodeGenerators.NLayer.Base;
+using Generator.Domain.CodeGenerators.Pipeline;
+using Generator.Domain.CodeGenerators.Services;
 using Generator.Domain.Repository;
 using Microsoft.CodeAnalysis;
 using Generator.Domain.Core.Entities;
@@ -11,51 +12,93 @@ using Generator.Domain.Core;
 
 namespace Generator.Domain.CodeGenerators.NLayer.DataAccess;
 
-public class NLayerDataAccessGenerator : NLayerGeneratorBase
+public class NLayerDataAccessGenerator : IGenerationStep
 {
     private readonly EntityRepository _entityRepository;
     private readonly FieldRepository _fieldRepository;
     private readonly RelationRepository _relationRepository;
-    public NLayerDataAccessGenerator(AppSetting appSetting) : base(appSetting)
+
+    private readonly FileSystemService _fs;
+    private readonly RoslynSyntaxHelper _roslyn;
+    private readonly DotnetCliService _cli;
+    private readonly TemplateRenderer _templateRenderer;
+
+    public string Name => "DataAccess Layer";
+    public int Order => 3;
+    public int ProgressWeight => 20;
+
+    public NLayerDataAccessGenerator(
+        EntityRepository entityRepository,
+        FieldRepository fieldRepository,
+        RelationRepository relationRepository,
+        FileSystemService fs,
+        RoslynSyntaxHelper roslyn, DotnetCliService cli, TemplateRenderer templateRenderer)
     {
-        _entityRepository = new();
-        _fieldRepository = new();
-        _relationRepository = new();
+        _entityRepository = entityRepository;
+        _fieldRepository = fieldRepository;
+        _relationRepository = relationRepository;
+        _fs = fs;
+        _roslyn = roslyn;
+        _cli = cli;
+        _templateRenderer = templateRenderer;
+    }
+
+    public bool Execute(AppSetting appSetting, Action<string> log)
+    {
+        try
+        {
+            log(_cli.CreateClassLibraryProject(appSetting, appSetting.DataAccessLayerProjectName, new[] { $"../{appSetting.ModelLayerProjectName}/{appSetting.ModelLayerProjectName}.csproj" }));
+            log(_cli.AddPackage(appSetting, "Microsoft.AspNetCore.Identity.EntityFrameworkCore --version 10.0.4", appSetting.DataAccessLayerProjectName));
+            log(_cli.AddPackage(appSetting, "Microsoft.EntityFrameworkCore.Design --version 10.0.4", appSetting.DataAccessLayerProjectName));
+            log(_cli.AddPackage(appSetting, "Microsoft.EntityFrameworkCore.Sqlite --version 10.0.4", appSetting.DataAccessLayerProjectName));
+            log(_cli.AddPackage(appSetting, "Microsoft.EntityFrameworkCore.SqlServer --version 10.0.4", appSetting.DataAccessLayerProjectName));
+            log(_cli.Restore(appSetting, appSetting.DataAccessLayerProjectName));
+            log(_templateRenderer.GenerateStaticFiles(appSetting, "DataAccess", appSetting.DataAccessLayerProjectName));
+            log(GenerateRepositories(appSetting));
+            log(GenerateUOW(appSetting));
+            log(GenerateContext(appSetting));
+            log(GenerateServiceRegistration(appSetting));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log(ex.Message);
+            return false;
+        }
     }
 
     #region Repository
-    public string GenerateRepositories()
+    private string GenerateRepositories(AppSetting appSetting)
     {
         var results = new List<string>();
 
         var entities = _entityRepository.GetAll(f => f.Control == false);
 
-        string folderPathAbstract = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName, "Abstract");
-        string folderPathConcrete = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName, "Concrete");
+        string folderPathAbstract = Path.Combine(appSetting.SolutionPath, appSetting.DataAccessLayerProjectName, "Abstract");
+        string folderPathConcrete = Path.Combine(appSetting.SolutionPath, appSetting.DataAccessLayerProjectName, "Concrete");
 
         foreach (var entity in entities)
         {
-            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Repository.cs", IRepository(entity.Name)));
-            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Repository.cs", Repository(entity.Name)));
+            results.Add(_fs.AddFile(folderPathAbstract, $"I{entity.Name}Repository.cs", IRepository(entity.Name, appSetting)));
+            results.Add(_fs.AddFile(folderPathConcrete, $"{entity.Name}Repository.cs", Repository(entity.Name, appSetting)));
         }
 
-        if (_appSetting.IsThereIdentity)
+        if (appSetting.IsThereIdentity)
         {
-            var abstractRefreshToeknService = IRepository(
-                entityName: "RefreshToken",
+            var abstractRefreshToeknService = IRepository(entityName: "RefreshToken", appSetting: appSetting,
                 methods: [
-                    MethodDeclaration(
+                    _roslyn.MethodDeclaration(
                         name: "RevokeDeviceRefreshTokens",
                         returnType: "void",
-                        parameters: [ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true)],
+                        parameters: [_roslyn.ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true)],
                         isThereBody: false
                     ),
-                    MethodDeclaration(
+                    _roslyn.MethodDeclaration(
                         name: "RevokeDeviceRefreshTokensAsync",
                         returnType: "Task",
                         parameters: [
-                            ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true),
-                            ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                            _roslyn.ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true),
+                            _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                         ],
                         isThereBody: false
                     )
@@ -63,46 +106,46 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             );
 
             var concreteRefreshToeknService = Repository(
-                entityName: "RefreshToken",
+                entityName: "RefreshToken", appSetting: appSetting,
                 methods: [
-                    MethodDeclaration(
+                    _roslyn.MethodDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RevokeDeviceRefreshTokens",
                         returnType: "void",
-                        parameters: [ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true)],
+                        parameters: [_roslyn.ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true)],
                         body: "_context.RefreshTokens.Where(where).ExecuteUpdateAsync(s => s.SetProperty(rt => rt.IsRevoked, true));"
                     ),
-                    MethodDeclaration(
+                    _roslyn.MethodDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                         name: "RevokeDeviceRefreshTokensAsync",
                         returnType: "Task",
                         parameters: [
-                            ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true),
-                            ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                            _roslyn.ParameterDeclaration("Expression<Func<RefreshToken, bool>>", "where", true),
+                            _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                         ],
                         body: "await _context.RefreshTokens.Where(where).ExecuteUpdateAsync(s => s.SetProperty(rt => rt.IsRevoked, true), cancellationToken);"
                     )
                 ]
             );
-            results.Add(AddFile(folderPathAbstract, "IRefreshTokenRepository.cs", abstractRefreshToeknService));
-            results.Add(AddFile(folderPathConcrete, "RefreshTokenRepository.cs", concreteRefreshToeknService));
+            results.Add(_fs.AddFile(folderPathAbstract, "IRefreshTokenRepository.cs", abstractRefreshToeknService));
+            results.Add(_fs.AddFile(folderPathConcrete, "RefreshTokenRepository.cs", concreteRefreshToeknService));
         }
 
         return string.Join("\n", results);
     }
 
-    private string IRepository(string entityName, MethodDeclarationSyntax[]? methods = null)
+    private string IRepository(string entityName, AppSetting appSetting, MethodDeclarationSyntax[]? methods = null)
     {
-        return CompilationUnit(
+        return _roslyn.CompilationUnit(
             usings: [
                 "System.Linq.Expressions",
-                $"{_appSetting.DataAccessLayerProjectName}.Repository",
-                $"{_appSetting.ModelLayerProjectName}.Entities"
+                $"{appSetting.DataAccessLayerProjectName}.Repository",
+                $"{appSetting.ModelLayerProjectName}.Entities"
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.Abstract",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.DataAccessLayerProjectName}.Abstract",
                 members: [
-                    InterfaceDeclaration(
+                    _roslyn.InterfaceDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: $"I{entityName}Repository",
                         baseTypes: [
@@ -116,21 +159,21 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         ).ToFullString();
     }
 
-    private string Repository(string entityName, MethodDeclarationSyntax[]? methods = null)
+    private string Repository(string entityName, AppSetting appSetting, MethodDeclarationSyntax[]? methods = null)
     {
-        return CompilationUnit(
+        return _roslyn.CompilationUnit(
             usings: [
                 "System.Linq.Expressions",
                 "Microsoft.EntityFrameworkCore",
-                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
-                $"{_appSetting.DataAccessLayerProjectName}.Contexts",
-                $"{_appSetting.DataAccessLayerProjectName}.Repository",
-                $"{_appSetting.ModelLayerProjectName}.Entities"
+                $"{appSetting.DataAccessLayerProjectName}.Abstract",
+                $"{appSetting.DataAccessLayerProjectName}.Contexts",
+                $"{appSetting.DataAccessLayerProjectName}.Repository",
+                $"{appSetting.ModelLayerProjectName}.Entities"
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.Concrete",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.DataAccessLayerProjectName}.Concrete",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: $"{entityName}Repository",
                         baseTypes: [
@@ -138,10 +181,10 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                             SyntaxFactory.ParseTypeName($"I{entityName}Repository")
                         ],
                         members: [
-                            ConstructorDeclaration(
+                            _roslyn.ConstructorDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword],
                                 name: $"{entityName}Repository",
-                                parameters: [ParameterDeclaration("AppDbContext", "context")],
+                                parameters: [_roslyn.ParameterDeclaration("AppDbContext", "context")],
                                 baseArgs: ["context"]
                             ),
                             ..methods ?? []
@@ -154,62 +197,62 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
     #endregion
 
     #region UnitOfWork
-    public string GenerateUOW()
+    private string GenerateUOW(AppSetting appSetting)
     {
         var results = new List<string>();
 
         var entities = _entityRepository.GetAll(f => f.Control == false);
 
-        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName, "UoW");
+        string folderPath = Path.Combine(appSetting.SolutionPath, appSetting.DataAccessLayerProjectName, "UoW");
 
-        results.Add(AddFile(folderPath, "IUnitOfWork.cs", IUnitOfWork(entities)));
-        results.Add(AddFile(folderPath, "UnitOfWork.cs", UnitOfWork(entities)));
+        results.Add(_fs.AddFile(folderPath, "IUnitOfWork.cs", IUnitOfWork(entities, appSetting)));
+        results.Add(_fs.AddFile(folderPath, "UnitOfWork.cs", UnitOfWork(entities, appSetting)));
 
         return string.Join("\n", results);
     }
 
-    private string UnitOfWork(List<Entity> entities)
+    private string UnitOfWork(List<Entity> entities, AppSetting appSetting)
     {
         var properties = new List<PropertyDeclarationSyntax>();
         foreach (var entity in entities)
-            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true, nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration), AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, [SyntaxKind.PrivateKeyword])]));
-        if (_appSetting.IsThereIdentity)
-            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true, nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration), AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, [SyntaxKind.PrivateKeyword])]));
+            properties.Add(_roslyn.PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), true, nullableDecleration: false, accessors: [_roslyn.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration), _roslyn.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, [SyntaxKind.PrivateKeyword])]));
+        if (appSetting.IsThereIdentity)
+            properties.Add(_roslyn.PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", true, nullableDecleration: false, accessors: [_roslyn.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration), _roslyn.AccessorDeclaration(SyntaxKind.SetAccessorDeclaration, [SyntaxKind.PrivateKeyword])]));
 
         var fileds = new List<FieldDeclarationSyntax>()
         {
-            FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction", nullable : true),
-            FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context")
+            _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword],"IDbContextTransaction", "_transaction", nullable : true),
+            _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "AppDbContext", "_context")
         };
 
-        var constructor = ConstructorDeclaration(
+        var constructor = _roslyn.ConstructorDeclaration(
             modifiers: [SyntaxKind.PublicKeyword],
             name: "UnitOfWork",
             parameters: [
-                ParameterDeclaration("AppDbContext", "context"),
-                ..entities.Select(e => ParameterDeclaration($"I{e.Name}Repository", $"{e.Name}Repository".ToCamelCase())),
+                _roslyn.ParameterDeclaration("AppDbContext", "context"),
+                ..entities.Select(e => _roslyn.ParameterDeclaration($"I{e.Name}Repository", $"{e.Name}Repository".ToCamelCase())),
             ],
             statements: [
-                StatementExpression("_context", "context"),
-                ..entities.Select(e => StatementExpression(e.Name.Pluralize(), $"{e.Name}Repository".ToCamelCase())),
+                _roslyn.StatementExpression("_context", "context"),
+                ..entities.Select(e => _roslyn.StatementExpression(e.Name.Pluralize(), $"{e.Name}Repository".ToCamelCase())),
             ]
         );
-        if (_appSetting.IsThereIdentity)
+        if (appSetting.IsThereIdentity)
         {
-            constructor = constructor.AddParameterListParameters(ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository"));
-            constructor = constructor.AddBodyStatements(StatementExpression("RefreshTokens", "refreshTokenRepository"));
+            constructor = constructor.AddParameterListParameters(_roslyn.ParameterDeclaration("IRefreshTokenRepository", "refreshTokenRepository"));
+            constructor = constructor.AddBodyStatements(_roslyn.StatementExpression("RefreshTokens", "refreshTokenRepository"));
         }
 
         var methodsConcrete = new List<MethodDeclarationSyntax>()
         {
             #region Syncronous
-		    MethodDeclaration(
+		    _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword],
                 name: "SaveChanges",
                 returnType: "int",
                 body: "return _context.SaveChanges();"
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword],
                 name: "BeginTransaction",
                 returnType: "void",
@@ -218,7 +261,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                     _transaction = _context.Database.BeginTransaction();
                 "
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword],
                 name: "CommitTransaction",
                 returnType: "void",
@@ -229,7 +272,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                     _transaction = null;
                 "
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword],
                 name : "RollbackTransaction",
                 returnType : "void",
@@ -243,28 +286,28 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 	        #endregion
 		
             #region Asyncronous
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "SaveChangesAsync",
                 returnType: "Task<int>",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: "return await _context.SaveChangesAsync(cancellationToken);"
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "BeginTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: @"
                     if (_transaction != null) throw new InvalidOperationException(""Transaction already started for begin transaction."");
                     _transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
                 "
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "CommitTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: @"
                     if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for commit."");
                     await _transaction.CommitAsync(cancellationToken);
@@ -272,11 +315,11 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                     _transaction = null;
                 "
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "RollbackTransactionAsync",
                 returnType : "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 body: @"
                     if (_transaction == null) throw new InvalidOperationException(""Transaction has not been started for rollback."");
                     await _transaction.RollbackAsync(cancellationToken);
@@ -287,7 +330,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 	        #endregion
 		
             #region Dispose
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword],
                 name: "Dispose",
                 returnType : "void",
@@ -300,7 +343,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                     _context.Dispose();
                 "
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DisposeAsync",
                 returnType : "ValueTask",
@@ -316,16 +359,16 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 	        #endregion
         };
 
-        string code_concrete = CompilationUnit(
+        string code_concrete = _roslyn.CompilationUnit(
             usings: [
-                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
-                $"{_appSetting.DataAccessLayerProjectName}.Contexts",
+                $"{appSetting.DataAccessLayerProjectName}.Abstract",
+                $"{appSetting.DataAccessLayerProjectName}.Contexts",
                 "Microsoft.EntityFrameworkCore.Storage"
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.UoW",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.DataAccessLayerProjectName}.UoW",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "UnitOfWork",
                         baseTypes: [SyntaxFactory.ParseTypeName("IUnitOfWork")],
@@ -342,53 +385,53 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         return code_concrete;
     }
 
-    private string IUnitOfWork(List<Entity> entities)
+    private string IUnitOfWork(List<Entity> entities, AppSetting appSetting)
     {
         var properties = new List<PropertyDeclarationSyntax>();
         foreach (var entity in entities)
-            properties.Add(PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), required: true, modifiers: [], nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)]));
-        if (_appSetting.IsThereIdentity)
-            properties.Add(PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", required: true, modifiers: [], nullableDecleration: false, accessors: [AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)]));
+            properties.Add(_roslyn.PropertyDeclaration($"I{entity.Name}Repository", entity.Name.Pluralize(), required: true, modifiers: [], nullableDecleration: false, accessors: [_roslyn.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)]));
+        if (appSetting.IsThereIdentity)
+            properties.Add(_roslyn.PropertyDeclaration("IRefreshTokenRepository", "RefreshTokens", required: true, modifiers: [], nullableDecleration: false, accessors: [_roslyn.AccessorDeclaration(SyntaxKind.GetAccessorDeclaration)]));
 
         var abstractMethods = new List<MethodDeclarationSyntax>()
         {
-            MethodDeclaration(name: "SaveChanges", returnType: "int", isThereBody: false),
-            MethodDeclaration(name : "BeginTransaction", returnType : "void", isThereBody: false),
-            MethodDeclaration(name : "CommitTransaction", returnType : "void", isThereBody: false),
-            MethodDeclaration(name : "RollbackTransaction", returnType : "void", isThereBody: false),
+            _roslyn.MethodDeclaration(name: "SaveChanges", returnType: "int", isThereBody: false),
+            _roslyn.MethodDeclaration(name : "BeginTransaction", returnType : "void", isThereBody: false),
+            _roslyn.MethodDeclaration(name : "CommitTransaction", returnType : "void", isThereBody: false),
+            _roslyn.MethodDeclaration(name : "RollbackTransaction", returnType : "void", isThereBody: false),
 
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 name: "SaveChangesAsync",
                 returnType: "Task<int>",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 name: "BeginTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 name: "CommitTransactionAsync",
                 returnType: "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             ),
-            MethodDeclaration(
+            _roslyn.MethodDeclaration(
                 name: "RollbackTransactionAsync",
                 returnType : "Task",
-                parameters: [ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
+                parameters: [_roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")],
                 isThereBody: false
             )
         };
 
-        return CompilationUnit(
-            usings: [$"{_appSetting.DataAccessLayerProjectName}.Abstract"],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.UoW",
+        return _roslyn.CompilationUnit(
+            usings: [$"{appSetting.DataAccessLayerProjectName}.Abstract"],
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.DataAccessLayerProjectName}.UoW",
                 members: [
-                    InterfaceDeclaration(
+                    _roslyn.InterfaceDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "IUnitOfWork",
                         baseTypes: [
@@ -407,27 +450,27 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
     #endregion
 
     #region Context
-    public string GenerateContext()
+    private string GenerateContext(AppSetting appSetting)
     {
         var results = new List<string>();
 
         var entities = _entityRepository.GetAll(f => f.Control == false, include: i => i.Include(x => x.Fields));
 
-        var identityTypeConfigs = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
+        var identityTypeConfigs = appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
         string IdentityKeyType = identityTypeConfigs.IdentityKeyType;
         string IdentityUserType = identityTypeConfigs.IdentityUserType;
         string IdentityRoleType = identityTypeConfigs.IdentityRoleType;
 
         #region DbSets
         var dbSets = entities.Select(e =>
-            _appSetting.IsThereIdentity && ((e.Id == _appSetting.UserEntityId && e.Name == "User") || (e.Id == _appSetting.RoleEntityId && e.Name == "Role")) ?
-                PropertyDeclaration($"override DbSet<{e.Name}>", e.Name.Pluralize(), true, nullableDecleration: false) :
-                PropertyDeclaration($"DbSet<{e.Name}>", e.Name.Pluralize(), true, nullableDecleration: false)
+            appSetting.IsThereIdentity && ((e.Id == appSetting.UserEntityId && e.Name == "User") || (e.Id == appSetting.RoleEntityId && e.Name == "Role")) ?
+                _roslyn.PropertyDeclaration($"override DbSet<{e.Name}>", e.Name.Pluralize(), true, nullableDecleration: false) :
+                _roslyn.PropertyDeclaration($"DbSet<{e.Name}>", e.Name.Pluralize(), true, nullableDecleration: false)
         ).ToList();
-        if (_appSetting.IsThereIdentity)
-            dbSets.Add(PropertyDeclaration("DbSet<RefreshToken>", "RefreshTokens", true, nullableDecleration: false));
-        dbSets.Add(PropertyDeclaration("DbSet<Log>", "Logs", true, nullableDecleration: false));
-        dbSets.Add(PropertyDeclaration("DbSet<Archive>", "Archives", true, nullableDecleration: false));
+        if (appSetting.IsThereIdentity)
+            dbSets.Add(_roslyn.PropertyDeclaration("DbSet<RefreshToken>", "RefreshTokens", true, nullableDecleration: false));
+        dbSets.Add(_roslyn.PropertyDeclaration("DbSet<Log>", "Logs", true, nullableDecleration: false));
+        dbSets.Add(_roslyn.PropertyDeclaration("DbSet<Archive>", "Archives", true, nullableDecleration: false));
         #endregion
 
         #region Model Builders
@@ -476,7 +519,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
                 }
             }
 
-            if (_appSetting.IsThereUser && entity.Id == _appSetting.UserEntityId)
+            if (appSetting.IsThereUser && entity.Id == appSetting.UserEntityId)
             {
                 statements.Add(SyntaxFactory.ParseStatement(@"
                     u.HasMany(u => u.RefreshTokens)
@@ -509,7 +552,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             );
         }
 
-        if (_appSetting.IsThereIdentity)
+        if (appSetting.IsThereIdentity)
         {
             modelBuilders.Add(SyntaxFactory.ParseStatement(@"
                 modelBuilder.Entity<RefreshToken>(r =>
@@ -538,14 +581,14 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             });")
         );
 
-        if (_appSetting.IsThereIdentity)
+        if (appSetting.IsThereIdentity)
         {
-            if (!_appSetting.IsThereUser)
+            if (!appSetting.IsThereUser)
             {
                 modelBuilders.Add(SyntaxFactory.ParseStatement($"modelBuilder.Entity<IdentityUser<{IdentityKeyType}>>(entity => {{ entity.ToTable(\"Users\"); }});"));
             }
 
-            if (!_appSetting.IsThereRole)
+            if (!appSetting.IsThereRole)
             {
                 List<(string roleName, string roleId, string concurrencyStamp)> defaultRoles = new List<(string roleName, string roleId, string concurrencyStamp)>
                 {
@@ -605,36 +648,36 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
         }
         #endregion
 
-        var context = CompilationUnit(
+        var context = _roslyn.CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Identity",
                 "Microsoft.AspNetCore.Identity.EntityFrameworkCore",
                 "Microsoft.EntityFrameworkCore",
-                $"{_appSetting.ModelLayerProjectName}.Entities",
-                $"{_appSetting.ModelLayerProjectName}.ProjectEntities"
+                $"{appSetting.ModelLayerProjectName}.Entities",
+                $"{appSetting.ModelLayerProjectName}.ProjectEntities"
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}.Contexts",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.DataAccessLayerProjectName}.Contexts",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "AppDbContext",
-                        baseTypes: _appSetting.IsThereIdentity
+                        baseTypes: appSetting.IsThereIdentity
                             ? [SyntaxFactory.ParseTypeName($"IdentityDbContext<{IdentityUserType}, {IdentityRoleType}, {IdentityKeyType}>")]
                             : [SyntaxFactory.ParseTypeName("DbContext")],
                         members: [
-                            ConstructorDeclaration(
+                            _roslyn.ConstructorDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword],
                                 name: "AppDbContext",
-                                parameters: [ParameterDeclaration("DbContextOptions<AppDbContext>", "options")],
+                                parameters: [_roslyn.ParameterDeclaration("DbContextOptions<AppDbContext>", "options")],
                                 baseArgs: ["options"]
                             ),
                             ..dbSets,
-                            MethodDeclaration(
+                            _roslyn.MethodDeclaration(
                                 modifiers: [SyntaxKind.ProtectedKeyword, SyntaxKind.OverrideKeyword],
                                 name: "OnModelCreating",
                                 returnType: "void",
-                                parameters: [ParameterDeclaration("ModelBuilder", "modelBuilder")],
+                                parameters: [_roslyn.ParameterDeclaration("ModelBuilder", "modelBuilder")],
                                 block: SyntaxFactory.Block(modelBuilders)
                             )
                         ]
@@ -643,8 +686,8 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             )
         ).ToFullString();
 
-        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName, "Contexts");
-        results.Add(AddFile(folderPath, "AppDbContext.cs", context));
+        string folderPath = Path.Combine(appSetting.SolutionPath, appSetting.DataAccessLayerProjectName, "Contexts");
+        results.Add(_fs.AddFile(folderPath, "AppDbContext.cs", context));
 
         return string.Join("\n", results);
     }
@@ -671,7 +714,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
     #endregion
 
     #region ServiceRegistration
-    public string GenerateServiceRegistration()
+    private string GenerateServiceRegistration(AppSetting appSetting)
     {
         var sb = new StringBuilder();
 
@@ -679,7 +722,7 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
 
         foreach (var entity in entities)
             sb.AppendLine($"services.AddScoped<I{entity.Name}Repository, {entity.Name}Repository>();");
-        if (_appSetting.IsThereIdentity)
+        if (appSetting.IsThereIdentity)
             sb.AppendLine("services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();");
 
         sb.AppendLine(@"
@@ -702,31 +745,31 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
             return services;
         ");
 
-        var code = CompilationUnit(
+        var code = _roslyn.CompilationUnit(
             usings: [
-                $"{_appSetting.DataAccessLayerProjectName}.Abstract",
-                $"{_appSetting.DataAccessLayerProjectName}.Concrete",
-                $"{_appSetting.DataAccessLayerProjectName}.Contexts",
-                $"{_appSetting.DataAccessLayerProjectName}.Interceptors",
-                $"{_appSetting.DataAccessLayerProjectName}.UoW",
+                $"{appSetting.DataAccessLayerProjectName}.Abstract",
+                $"{appSetting.DataAccessLayerProjectName}.Concrete",
+                $"{appSetting.DataAccessLayerProjectName}.Contexts",
+                $"{appSetting.DataAccessLayerProjectName}.Interceptors",
+                $"{appSetting.DataAccessLayerProjectName}.UoW",
                 "Microsoft.EntityFrameworkCore",
                 "Microsoft.Extensions.Configuration",
                 "Microsoft.Extensions.DependencyInjection",
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.DataAccessLayerProjectName}",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.DataAccessLayerProjectName}",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
                         name: "ServiceRegistration",
                         members: [
-                            MethodDeclaration(
+                            _roslyn.MethodDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
                                 name: "AddDataAccessServices",
                                 returnType: "IServiceCollection",
                                 parameters: [
-                                    ParameterDeclaration(modifiers: [SyntaxKind.ThisKeyword], type: "IServiceCollection", name: "services"),
-                                    ParameterDeclaration(type: "IConfiguration", name: "configuration")
+                                    _roslyn.ParameterDeclaration(modifiers: [SyntaxKind.ThisKeyword], type: "IServiceCollection", name: "services"),
+                                    _roslyn.ParameterDeclaration(type: "IConfiguration", name: "configuration")
                                 ],
                                 body: sb.ToString()
                             )
@@ -736,8 +779,17 @@ public class NLayerDataAccessGenerator : NLayerGeneratorBase
              )
          );
 
-        string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.DataAccessLayerProjectName);
-        return AddFile(folderPath, "ServiceRegistration.cs", code.ToFullString());
+        string folderPath = Path.Combine(appSetting.SolutionPath, appSetting.DataAccessLayerProjectName);
+        return _fs.AddFile(folderPath, "ServiceRegistration.cs", code.ToFullString());
     }
     #endregion
 }
+
+
+
+
+
+
+
+
+

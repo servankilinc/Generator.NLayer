@@ -1,8 +1,10 @@
-using Generator.Domain.CodeGenerators.NLayer.Base;
+using Generator.Domain.CodeGenerators.Pipeline;
+using Generator.Domain.CodeGenerators.Services;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Repository;
 using Generator.NTier.CodeGenerators.NLayer.Business.Helpers;
+using Generator.Domain.CodeGenerators.Helpers;
 using Humanizer;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -11,20 +13,58 @@ using System.Text;
 
 namespace Generator.Domain.CodeGenerators.NLayer.Business;
 
-public class NLayerBusinessGenerator : NLayerGeneratorBase
+public class NLayerBusinessGenerator : IGenerationStep
 {
     private readonly DtoRepository _dtoRepository;
     private readonly DtoFieldRepository _dtoFieldRepository;
     private readonly EntityRepository _entityRepository;
-    public NLayerBusinessGenerator(AppSetting appSetting) : base(appSetting)
+
+    private readonly FileSystemService _fs;
+    private readonly RoslynSyntaxHelper _roslyn;
+    private readonly DotnetCliService _cli;
+    private readonly TemplateRenderer _templateRenderer;
+    
+    private AppSetting _appSetting = null!;
+
+    public string Name => "Business Layer";
+    public int Order => 4;
+    public int ProgressWeight => 25;
+
+    public NLayerBusinessGenerator(
+        DtoRepository dtoRepository,
+        DtoFieldRepository dtoFieldRepository,
+        EntityRepository entityRepository,
+        FileSystemService fs,
+        RoslynSyntaxHelper roslyn, DotnetCliService cli, TemplateRenderer templateRenderer)
     {
-        _dtoRepository = new();
-        _dtoFieldRepository = new();
-        _entityRepository = new();
+        _dtoRepository = dtoRepository;
+        _dtoFieldRepository = dtoFieldRepository;
+        _entityRepository = entityRepository;
+        _fs = fs;
+        _roslyn = roslyn;
+        _cli = cli;
+        _templateRenderer = templateRenderer;
+    }
+
+    public bool Execute(AppSetting appSetting, Action<string> log)
+    {
+        try
+        {
+            _appSetting = appSetting;
+            log(GenerateServices());
+            log(GenerateMappings());
+            log(GenerateServiceRegistrations());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log(ex.Message);
+            return false;
+        }
     }
 
     #region Service
-    public string GeneraterService()
+    public string GenerateServices()
     {
         var results = new List<string>();
 
@@ -47,7 +87,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
             if (dtos.Any(f => f.CrudTypeId == (byte)Enums.CrudTypeEnums.Read))
                 dtoUsings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Queries");
 
-            var code_abstract = CompilationUnit(
+            var code_abstract = _roslyn.CompilationUnit(
                 usings: [
                     "System.Linq.Expressions",
                     "Microsoft.AspNetCore.Mvc.Rendering",
@@ -58,10 +98,10 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     $"{_appSetting.ModelLayerProjectName}.Entities",
                     ..dtoUsings
                 ],
-                nspace: NamespaceDeclaration(
+                nspace: _roslyn.NamespaceDeclaration(
                     value: $"{_appSetting.BusinessLayerProjectName}.Abstract",
                     members: [
-                        InterfaceDeclaration(
+                        _roslyn.InterfaceDeclaration(
                             name: $"I{entity.Name}Service",
                             modifiers: [SyntaxKind.PublicKeyword],
                             members: [..GenerateAbstractMethods(entity, dtos)]
@@ -70,7 +110,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 )
             );
 
-            var code_concrete = CompilationUnit(
+            var code_concrete = _roslyn.CompilationUnit(
                 usings: [
                     "AutoMapper",
                     "System.Linq.Expressions",
@@ -87,29 +127,29 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     $"{_appSetting.ModelLayerProjectName}.Entities",
                     ..dtoUsings
                 ],
-                nspace: NamespaceDeclaration(
+                nspace: _roslyn.NamespaceDeclaration(
                     value: $"{_appSetting.BusinessLayerProjectName}.Concrete",
                     members: [
-                        ClassDeclaration(
+                        _roslyn.ClassDeclaration(
                             name: $"{entity.Name}Service",
                             modifiers: [SyntaxKind.PublicKeyword],
                             baseTypes: [SyntaxFactory.ParseTypeName($"I{entity.Name}Service")],
                             members: [
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IUnitOfWork", "_unitOfWork"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IValidationService", "_validationService"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IMapper", "_mapper"),
-                                ConstructorDeclaration(
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IUnitOfWork", "_unitOfWork"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IValidationService", "_validationService"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IMapper", "_mapper"),
+                                _roslyn.ConstructorDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword],
                                     name: $"{entity.Name}Service",
                                     parameters: [
-                                        ParameterDeclaration("IUnitOfWork", "unitOfWork", true),
-                                        ParameterDeclaration("IValidationService", "validationService", true),
-                                        ParameterDeclaration("IMapper", "mapper", true)
+                                        _roslyn.ParameterDeclaration("IUnitOfWork", "unitOfWork", true),
+                                        _roslyn.ParameterDeclaration("IValidationService", "validationService", true),
+                                        _roslyn.ParameterDeclaration("IMapper", "mapper", true)
                                     ],
                                     statements: [
-                                        StatementExpression("_unitOfWork", "unitOfWork"),
-                                        StatementExpression("_validationService", "validationService"),
-                                        StatementExpression("_mapper", "mapper")
+                                        _roslyn.StatementExpression("_unitOfWork", "unitOfWork"),
+                                        _roslyn.StatementExpression("_validationService", "validationService"),
+                                        _roslyn.StatementExpression("_mapper", "mapper")
                                     ]
                                 ),
                                 ..GenerateConcreteMethods(entity, dtos)
@@ -119,50 +159,50 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 )
             );
 
-            results.Add(AddFile(folderPathAbstract, $"I{entity.Name}Service.cs", code_abstract.ToFullString()));
-            results.Add(AddFile(folderPathConcrete, $"{entity.Name}Service.cs", code_concrete.ToFullString()));
+            results.Add(_fs.AddFile(folderPathAbstract, $"I{entity.Name}Service.cs", code_abstract.ToFullString()));
+            results.Add(_fs.AddFile(folderPathConcrete, $"{entity.Name}Service.cs", code_concrete.ToFullString()));
         }
 
         if (_appSetting.IsThereIdentity)
         {
-            var code_IAuthService = CompilationUnit(
+            var code_IAuthService = _roslyn.CompilationUnit(
                 usings: [
                     $"{_appSetting.CoreLayerProjectName}.Utils.ResultPattern",
                     $"{_appSetting.ModelLayerProjectName}.Auth.Login",
                     $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
                     $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
                 ],
-                nspace: NamespaceDeclaration(
+                nspace: _roslyn.NamespaceDeclaration(
                     value: $"{_appSetting.BusinessLayerProjectName}.Abstract",
                     members: [
-                        InterfaceDeclaration(
+                        _roslyn.InterfaceDeclaration(
                             name: "IAuthService",
                             modifiers: [SyntaxKind.PublicKeyword],
                             members: [
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     name: "LoginAsync",
                                     returnType: $"Task<Result<LoginResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("LoginRequest", "loginRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                                        _roslyn.ParameterDeclaration("LoginRequest", "loginRequest", true),
+                                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     isThereBody: false
                                 ),
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     name: "SignUpAsync",
                                     returnType: $"Task<Result<SignUpResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("SignUpRequest", "signUpRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                                        _roslyn.ParameterDeclaration("SignUpRequest", "signUpRequest", true),
+                                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     isThereBody: false
                                 ),
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     name: "RefreshAsync",
                                     returnType: $"Task<Result<RefreshAuthResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("RefreshAuthRequest", "refreshAuthRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                                        _roslyn.ParameterDeclaration("RefreshAuthRequest", "refreshAuthRequest", true),
+                                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     isThereBody: false
                                 )
@@ -174,7 +214,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
 
 
-            var code_AuthService = CompilationUnit(
+            var code_AuthService = _roslyn.CompilationUnit(
                 usings: [
                     $"AutoMapper",
                     $"System.Security.Claims",
@@ -193,52 +233,52 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     $"{_appSetting.BusinessLayerProjectName}.Abstract",
                     $"{_appSetting.BusinessLayerProjectName}.Utils.TokenService"
                 ],
-                nspace: NamespaceDeclaration(
+                nspace: _roslyn.NamespaceDeclaration(
                     value: $"{_appSetting.BusinessLayerProjectName}.Concrete",
                     members: [
-                        ClassDeclaration(
+                        _roslyn.ClassDeclaration(
                             name: "AuthService",
                             modifiers: [SyntaxKind.PublicKeyword],
                             baseTypes: [SyntaxFactory.ParseTypeName("IAuthService")],
                             members: [
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IUnitOfWork", "_unitOfWork"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "ITokenService", "_tokenService"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "UserManager<User>", "_userManager"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "SignInManager<User>", "_signInManager"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IHttpContextManager", "_httpContextManager"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IValidationService", "_validationService"),
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IMapper", "_mapper"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IUnitOfWork", "_unitOfWork"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "ITokenService", "_tokenService"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "UserManager<User>", "_userManager"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "SignInManager<User>", "_signInManager"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IHttpContextManager", "_httpContextManager"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IValidationService", "_validationService"),
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], "IMapper", "_mapper"),
 
-                                ConstructorDeclaration(
+                                _roslyn.ConstructorDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword],
                                     name: "AuthService",
                                     parameters: [
-                                        ParameterDeclaration("IUnitOfWork", "unitOfWork", true),
-                                        ParameterDeclaration("ITokenService", "tokenService", true),
-                                        ParameterDeclaration("UserManager<User>", "userManager", true),
-                                        ParameterDeclaration("SignInManager<User>", "signInManager", true),
-                                        ParameterDeclaration("IHttpContextManager", "httpContextManager", true),
-                                        ParameterDeclaration("IValidationService", "validationService", true),
-                                        ParameterDeclaration("IMapper", "mapper", true)
+                                        _roslyn.ParameterDeclaration("IUnitOfWork", "unitOfWork", true),
+                                        _roslyn.ParameterDeclaration("ITokenService", "tokenService", true),
+                                        _roslyn.ParameterDeclaration("UserManager<User>", "userManager", true),
+                                        _roslyn.ParameterDeclaration("SignInManager<User>", "signInManager", true),
+                                        _roslyn.ParameterDeclaration("IHttpContextManager", "httpContextManager", true),
+                                        _roslyn.ParameterDeclaration("IValidationService", "validationService", true),
+                                        _roslyn.ParameterDeclaration("IMapper", "mapper", true)
                                     ],
                                     statements: [
-                                        StatementExpression("unitOfWork", "_unitOfWork"),
-                                        StatementExpression("tokenService", "_tokenService"),
-                                        StatementExpression("userManager", "_userManager"),
-                                        StatementExpression("signInManager", "_signInManager"),
-                                        StatementExpression("httpContextManager", "_httpContextManager"),
-                                        StatementExpression("validationService", "_validationService"),
-                                        StatementExpression("mapper", "_mapper")
+                                        _roslyn.StatementExpression("unitOfWork", "_unitOfWork"),
+                                        _roslyn.StatementExpression("tokenService", "_tokenService"),
+                                        _roslyn.StatementExpression("userManager", "_userManager"),
+                                        _roslyn.StatementExpression("signInManager", "_signInManager"),
+                                        _roslyn.StatementExpression("httpContextManager", "_httpContextManager"),
+                                        _roslyn.StatementExpression("validationService", "_validationService"),
+                                        _roslyn.StatementExpression("mapper", "_mapper")
                                     ]
                                 ),
 
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                                     name: "LoginAsync",
                                     returnType: $"Task<Result<LoginResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("LoginRequest", "loginRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                                        _roslyn.ParameterDeclaration("LoginRequest", "loginRequest", true),
+                                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     body: @"
                                         var validationResult = await _validationService.ValidateAsync(loginRequest, cancellationToken);
@@ -321,13 +361,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                         }
                                     "
                                 ),
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                                     name: "SignUpAsync",
                                     returnType: $"Task<Result<SignUpResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("SignUpRequest", "signUpRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                                        _roslyn.ParameterDeclaration("SignUpRequest", "signUpRequest", true),
+                                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     body: @"
                                         try
@@ -412,13 +452,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                         }
                                     "
                                 ),
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                                     name: "RefreshAsync",
                                     returnType: $"Task<Result<RefreshAuthResponse>>",
                                     parameters: [
-                                        ParameterDeclaration("RefreshAuthRequest", "refreshAuthRequest", true),
-                                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                                        _roslyn.ParameterDeclaration("RefreshAuthRequest", "refreshAuthRequest", true),
+                                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                                     ],
                                     body: @"
                                         try
@@ -503,13 +543,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                         }
                                     "
                                 ),
-                                MethodDeclaration(
+                                _roslyn.MethodDeclaration(
                                     modifiers: [SyntaxKind.PrivateKeyword, SyntaxKind.AsyncKeyword],
                                     name: "GetClaimsAsync",
                                     returnType: $"Task<IList<Claim>>",
                                     parameters: [
-                                        ParameterDeclaration("User", "user", true),
-                                        ParameterDeclaration("IList<string>", "roles", false)
+                                        _roslyn.ParameterDeclaration("User", "user", true),
+                                        _roslyn.ParameterDeclaration("IList<string>", "roles", false)
                                     ],
                                     body: @"
                                         List<Claim> claimList = new List<Claim>()
@@ -527,7 +567,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                                         IEnumerable<Claim>? roleClaims = roles.Select(role => new Claim(ClaimTypes.Role, role));
                                         claimList.AddRange(roleClaims);
 
-                                        // password, role vs. değişdiğinde mevcut tokenları geçersiz kılmak için security stamp eklenebilir
+                                        // password, role vs. deÄŸiÅŸdiÄŸinde mevcut tokenlarÄ± geÃ§ersiz kÄ±lmak iÃ§in security stamp eklenebilir
                                         // var securityStamp = await _userManager.GetSecurityStampAsync(user);
                                         // claimList.Add(new Claim(""app_security_stamp_claim"", securityStamp));
 
@@ -540,8 +580,8 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 )
             );
 
-            results.Add(AddFile(folderPathAbstract, "IAuthService.cs", code_IAuthService.ToFullString()));
-            results.Add(AddFile(folderPathConcrete, "AuthService.cs", code_AuthService.ToFullString()));
+            results.Add(_fs.AddFile(folderPathAbstract, "IAuthService.cs", code_IAuthService.ToFullString()));
+            results.Add(_fs.AddFile(folderPathConcrete, "AuthService.cs", code_AuthService.ToFullString()));
         }
 
         return string.Join("\n", results);
@@ -552,38 +592,38 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         var methods = new List<MethodDeclarationSyntax>();
 
         List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
-        var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
+        var uniqueFieldParameters = uniqueFields.Select(f => _roslyn.ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
 
         var reportDto = dtos.FirstOrDefault(f => f.Id == entity.ReportDtoId);
 
         #region GET
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
-                ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
                 ..uniqueFieldParameters,
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
 
         foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)Enums.CrudTypeEnums.Read))
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 name: dto.ServiceGetMethodName(entity),
                 returnType: $"Task<Result<{dto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -591,33 +631,33 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #endregion
 
         #region GET LIST
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
-                ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
-                ParameterDeclaration("DynamicRequest", "request", false),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("DynamicRequest", "request", false),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
 
         foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)Enums.CrudTypeEnums.Read))
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 name: dto.ServiceGetListMethodName(entity),
                 returnType: $"Task<Result<ICollection<{dto.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicRequest", "request", false),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicRequest", "request", false),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -627,12 +667,12 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region SELECT LIST
         if (entity.Fields.Count(f => f.IsUnique) == 1)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 name: "SelectListAsync",
                 returnType: "Task<Result<SelectList>>",
                 parameters: [
-                    ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -641,12 +681,12 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region CREATE
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "CreateAsync",
             returnType: $"Task<Result>",
             parameters: [
-                ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -656,22 +696,22 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         var updateDto = dtos.FirstOrDefault(f => f.Id == entity.UpdateDtoId);
         if (entity.UpdateDtoId != default && updateDto != default)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 name: "GetUpdateModelAsync",
                 returnType: $"Task<Result<{updateDto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
         }
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "UpdateAsync",
             returnType: $"Task<Result>",
             parameters: [
-                ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -679,29 +719,29 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         #region DELETE & RESTORE
         var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "DeleteAsync",
             returnType: $"Task<Result>",
             parameters:
                 deleteDto != null ? [
-                    ParameterDeclaration(deleteDto.Name, "request", true) ,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration(deleteDto.Name, "request", true) ,
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ] :
                 [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
             isThereBody: false
         ));
 
         if (entity.SoftDeletable)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 name: "RestoreAsync",
                 returnType: $"Task<Result>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 isThereBody: false
             ));
@@ -709,33 +749,33 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #endregion
 
         #region PAGINATION
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "PaginationAsync",
             returnType: $"Task<Result<PaginationResponse<{reportDto?.Name ?? entity.Name}>>>",
             parameters: [
-                ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("DynamicPaginationRequest", "request", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
         #endregion
 
         #region DATATABLE
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "DatatableClientSideAsync",
             returnType: $"Task<Result<DatatableResponseClientSide<{reportDto?.Name ?? entity.Name}>>>",
             parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             name: "DatatableServerSideAsync",
             returnType: $"Task<Result<DatatableResponseServerSide<{reportDto?.Name ?? entity.Name}>>>",
             parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             isThereBody: false
         ));
@@ -749,18 +789,18 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         var methods = new List<MethodDeclarationSyntax>();
 
         List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
-        var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
+        var uniqueFieldParameters = uniqueFields.Select(f => _roslyn.ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
 
         var reportDto = dtos.FirstOrDefault(f => f.Id == entity.ReportDtoId);
 
         #region GET
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
-                ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", true),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: @$"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync(
@@ -772,17 +812,17 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 return Result<{entity.Name}>.Success(result);
             "
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetAsync",
             returnType: $"Task<Result<{entity.Name}>>",
             parameters: [
                 ..uniqueFieldParameters,
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: @$"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync(
-                    {entity.WhereRule(uniqueFields)}, 
+                    {EntityCodeHelper.WhereRule(uniqueFields)}, 
                     cancellationToken: cancellationToken
                 );
                 if (result == null)
@@ -793,18 +833,18 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)Enums.CrudTypeEnums.Read))
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.ServiceGetMethodName(entity),
                 returnType: $"Task<Result<{dto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: @$"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync<{dto.Name}>(
                         configurationProvider: _mapper.ConfigurationProvider,                    
-                        {entity.WhereRule(uniqueFields)},
+                        {EntityCodeHelper.WhereRule(uniqueFields)},
                         cancellationToken: cancellationToken
                     );
                     if (result == null)
@@ -816,13 +856,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #endregion
 
         #region GET LIST
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
-                ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: @$"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync(
@@ -834,13 +874,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                 return Result<ICollection<{entity.Name}>>.Success(result);
             "
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetListAsync",
             returnType: $"Task<Result<ICollection<{entity.Name}>>>",
             parameters: [
-                ParameterDeclaration("DynamicRequest", "request", false),
-                ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                _roslyn.ParameterDeclaration("DynamicRequest", "request", false),
+                _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
             ],
             body: $@"
                 var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync(
@@ -857,13 +897,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
 
         foreach (var dto in dtos.Where(f => f.CrudTypeId == (int)Enums.CrudTypeEnums.Read))
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.ServiceGetListMethodName(entity),
                 returnType: $"Task<Result<ICollection<{dto.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicRequest", "request", false),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicRequest", "request", false),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync<{dto.Name}>(
@@ -883,18 +923,18 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region SELECT LIST
         if (entity.Fields.Count(f => f.IsUnique) == 1)
         {
-            Field? slctTextField = entity.GetSelectListTextField();
+            Field? slctTextField = EntityCodeHelper.GetSelectListTextField(entity);
             if (slctTextField != null)
             {
                 Field slctUniqueField = entity.Fields.First(f => f.IsUnique);
 
-                methods.Add(MethodDeclaration(
+                methods.Add(_roslyn.MethodDeclaration(
                     modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                     name: "SelectListAsync",
                     returnType: "Task<Result<SelectList>>",
                     parameters: [
-                        ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
-                        ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                        _roslyn.ParameterDeclaration($"Expression<Func<{entity.Name}, bool>>", "where", false),
+                        _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                     ],
                     body: $@"
                         var list = await _unitOfWork.{entity.Name.Pluralize()}.GetAllAsync<object>(
@@ -918,13 +958,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
         if (createDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "CreateAsync",
                 returnType: $"Task<Result>",
                 parameters: [
-                    ParameterDeclaration(createDto.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration(createDto.Name, "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
@@ -938,13 +978,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         }
         else
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "CreateAsync",
                 returnType: $"Task<Result>",
                 parameters: [
-                    ParameterDeclaration(entity.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration(entity.Name, "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     await _unitOfWork.{entity.Name.Pluralize()}.AddAndSaveAsync(request, cancellationToken);
@@ -958,18 +998,18 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         var updateDto = dtos.FirstOrDefault(f => f.Id == entity.UpdateDtoId);
         if (updateDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "GetUpdateModelAsync",
                 returnType: $"Task<Result<{updateDto.Name}>>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync<{updateDto.Name}>(
                         configurationProvider: _mapper.ConfigurationProvider,
-                        {entity.WhereRule(uniqueFields)},
+                        {EntityCodeHelper.WhereRule(uniqueFields)},
                         cancellationToken: cancellationToken
                     );
                     if (result == null)
@@ -977,20 +1017,20 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     return Result<{updateDto.Name}>.Success(result);
                 "
             ));
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "UpdateAsync",
                 returnType: $"Task<Result>",
                 parameters: [
-                    ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
                     if (!validationResult.IsValid)
                         return Result.Validation(validationResult.Failures);
 
-                    var entity = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync({entity.WhereRule(uniqueFields)}, cancellationToken: cancellationToken);
+                    var entity = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync({EntityCodeHelper.WhereRule(uniqueFields)}, cancellationToken: cancellationToken);
                     if (entity == null)
                         return Result.NotFound();
 
@@ -1001,16 +1041,16 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         }
         else
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "UpdateAsync",
                 returnType: $"Task<Result>",
                 parameters: [
-                    ParameterDeclaration(entity.Name, "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration(entity.Name, "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
-                    var entity = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync({entity.WhereRule(uniqueFields, "request")}, cancellationToken: cancellationToken);
+                    var entity = await _unitOfWork.{entity.Name.Pluralize()}.GetAsync({EntityCodeHelper.WhereRule(uniqueFields, "request")}, cancellationToken: cancellationToken);
                     if (entity == null)
                         return Result.NotFound();
 
@@ -1025,38 +1065,38 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
         if (deleteDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DeleteAsync",
                 returnType: $"Task<Result>",
                 parameters:
                 [
-                    ParameterDeclaration(deleteDto.Name, "request", true) ,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration(deleteDto.Name, "request", true) ,
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var validationResult = await _validationService.ValidateAsync(request, cancellationToken);
                     if (!validationResult.IsValid)
                         return Result.Validation(validationResult.Failures, description: $""Validation failed for {deleteDto!.Name}"");
                 
-                    await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({entity.WhereRule(uniqueFields, "request")}, cancellationToken);
+                    await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({EntityCodeHelper.WhereRule(uniqueFields, "request")}, cancellationToken);
                     return Result.Success();
                 "
             ));
         }
         else
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DeleteAsync",
                 returnType: $"Task<Result>",
                 parameters:
                 [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
-                    await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({entity.WhereRule(uniqueFields)}, cancellationToken);
+                    await _unitOfWork.{entity.Name.Pluralize()}.DeleteAndSaveAsync({EntityCodeHelper.WhereRule(uniqueFields)}, cancellationToken);
                     return Result.Success();
                 "
             ));
@@ -1066,16 +1106,16 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region RESTORE
         if (entity.SoftDeletable)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "RestoreAsync",
                 returnType: $"Task<Result>",
                 parameters: [
                     ..uniqueFieldParameters,
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
-                    await _unitOfWork.{entity.Name.Pluralize()}.RestoreAndSaveAsync({entity.WhereRule(uniqueFields)}, cancellationToken);
+                    await _unitOfWork.{entity.Name.Pluralize()}.RestoreAndSaveAsync({EntityCodeHelper.WhereRule(uniqueFields)}, cancellationToken);
                     return Result.Success();
                 "
             ));
@@ -1085,19 +1125,19 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region PAGINATION
         if (reportDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "PaginationAsync",
                 returnType: $"Task<Result<PaginationResponse<{reportDto.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicPaginationRequest", "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.PaginationAsync<{reportDto.Name}>(
                         configurationProvider: _mapper.ConfigurationProvider,
                         paginationRequest: request,
-                        {entity.IncludeRule(reportDto, _dtoFieldRepository)},
+                        {EntityCodeHelper.IncludeRule(entity, reportDto, _dtoFieldRepository)},
                         cancellationToken: cancellationToken
                     );
                     return Result<PaginationResponse<{reportDto.Name}>>.Success(result);
@@ -1106,13 +1146,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         }
         else
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "PaginationAsync",
                 returnType: $"Task<Result<PaginationResponse<{entity.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicPaginationRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicPaginationRequest", "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.PaginationAsync(
@@ -1128,37 +1168,37 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         #region DATATABLE
         if (reportDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DatatableClientSideAsync",
                 returnType: $"Task<Result<DatatableResponseClientSide<{reportDto.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableClientSideAsync<{reportDto.Name}>(
                         configurationProvider: _mapper.ConfigurationProvider,
                         datatableRequest: request,
-                        {entity.IncludeRule(reportDto, _dtoFieldRepository)},
+                        {EntityCodeHelper.IncludeRule(entity, reportDto, _dtoFieldRepository)},
                         cancellationToken: cancellationToken
                     );
                     return Result<DatatableResponseClientSide<{reportDto.Name}>>.Success(result);
                 "
             ));
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DatatableServerSideAsync",
                 returnType: $"Task<Result<DatatableResponseServerSide<{reportDto.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableServerSideAsync<{reportDto.Name}>(
                         configurationProvider: _mapper.ConfigurationProvider,
                         datatableRequest: request,
-                        {entity.IncludeRule(reportDto, _dtoFieldRepository)},
+                        {EntityCodeHelper.IncludeRule(entity, reportDto, _dtoFieldRepository)},
                         cancellationToken: cancellationToken
                     );
                     return Result<DatatableResponseServerSide<{reportDto.Name}>>.Success(result);
@@ -1167,13 +1207,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         }
         else
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DatatableClientSideAsync",
                 returnType: $"Task<Result<DatatableResponseClientSide<{entity.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableClientSideAsync(
@@ -1183,13 +1223,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
                     return Result<DatatableResponseClientSide<{entity.Name}>>.Success(result);
                 "
             ));
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "DatatableServerSideAsync",
                 returnType: $"Task<Result<DatatableResponseServerSide<{entity.Name}>>>",
                 parameters: [
-                    ParameterDeclaration("DynamicDatatableRequest", "request", true),
-                    ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
+                    _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true),
+                    _roslyn.ParameterDeclaration("CancellationToken", "cancellationToken", true, defaultValue: "default")
                 ],
                 body: $@"
                     var result = await _unitOfWork.{entity.Name.Pluralize()}.DatatableServerSideAsync(
@@ -1210,17 +1250,17 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
     #region Mapping Profile
     public string GenerateMappings()
     {
-        var code = CompilationUnit(
+        var code = _roslyn.CompilationUnit(
             usings: MappingProfilesHelper.GetUsings(_entityRepository, _dtoRepository, _appSetting),
-            nspace: NamespaceDeclaration(
+            nspace: _roslyn.NamespaceDeclaration(
                 value: $"{_appSetting.BusinessLayerProjectName}.Mappings",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         name: "MappingProfiles",
                         modifiers: [SyntaxKind.PublicKeyword],
                         baseTypes: [SyntaxFactory.ParseTypeName("Profile")],
                         members: [
-                            ConstructorDeclaration(
+                            _roslyn.ConstructorDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword],
                                 name: "MappingProfiles",
                                 block: MappingProfilesHelper.GetRules(_entityRepository, _dtoRepository, _dtoFieldRepository, _appSetting)
@@ -1232,7 +1272,7 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         ).ToFullString();
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName, "Mappings");
-        return AddFile(folderPath, "MappingProfiles.cs", code);
+        return _fs.AddFile(folderPath, "MappingProfiles.cs", code);
     }
     #endregion
 
@@ -1273,22 +1313,22 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         sbBody.AppendLine("return services;");
         #endregion
 
-        var code = CompilationUnit(
+        var code = _roslyn.CompilationUnit(
             usings: [.. usings],
-            nspace: NamespaceDeclaration(
+            nspace: _roslyn.NamespaceDeclaration(
                 value: $"{_appSetting.BusinessLayerProjectName}",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         name: "ServiceRegistration",
                         modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
                         members: [
-                            MethodDeclaration(
+                            _roslyn.MethodDeclaration(
                                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.StaticKeyword],
                                 name: "AddBusinessServices",
                                 returnType: "IServiceCollection",
                                 parameters: [
-                                    ParameterDeclaration("IServiceCollection", "services", true, [SyntaxKind.ThisKeyword]),
-                                    ParameterDeclaration("IConfiguration", "configuration", true)
+                                    _roslyn.ParameterDeclaration("IServiceCollection", "services", true, [SyntaxKind.ThisKeyword]),
+                                    _roslyn.ParameterDeclaration("IConfiguration", "configuration", true)
                                 ],
                                 body: sbBody.ToString()
                             )
@@ -1299,7 +1339,13 @@ public class NLayerBusinessGenerator : NLayerGeneratorBase
         );
 
         string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.BusinessLayerProjectName);
-        return AddFile(folderPath, "ServiceRegistration.cs", code.ToFullString());
+        return _fs.AddFile(folderPath, "ServiceRegistration.cs", code.ToFullString());
     }
     #endregion
 }
+
+
+
+
+
+

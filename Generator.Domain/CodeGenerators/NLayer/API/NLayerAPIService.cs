@@ -1,4 +1,5 @@
-﻿using Generator.Domain.CodeGenerators.NLayer.Base;
+using Generator.Domain.CodeGenerators.Pipeline;
+using Generator.Domain.CodeGenerators.Services;
 using Generator.Domain.Repository;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -6,19 +7,66 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.EntityFrameworkCore;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Entities;
+using Generator.Domain.CodeGenerators.Helpers;
 
 namespace Generator.Domain.CodeGenerators.NLayer.API;
 
-public class NLayerAPIService : NLayerGeneratorBase
+public class NLayerAPIService : IGenerationStep
 {
     private readonly EntityRepository _entityRepository;
     private readonly FieldRepository _fieldRepository;
     private readonly DtoRepository _dtoRepository;
-    public NLayerAPIService(AppSetting appSetting) : base(appSetting)
+
+    private readonly FileSystemService _fs;
+    private readonly RoslynSyntaxHelper _roslyn;
+    private readonly DotnetCliService _cli;
+    private readonly TemplateRenderer _templateRenderer;
+
+    private AppSetting _appSetting = null!;
+
+    public string Name => "API Layer";
+    public int Order => 5;
+    public int ProgressWeight => 15;
+
+    public NLayerAPIService(
+        EntityRepository entityRepository,
+        FieldRepository fieldRepository,
+        DtoRepository dtoRepository,
+        FileSystemService fs,
+        RoslynSyntaxHelper roslyn,
+        DotnetCliService cli,
+        TemplateRenderer templateRenderer)
     {
-        _entityRepository = new();
-        _fieldRepository = new();
-        _dtoRepository = new();
+        _entityRepository = entityRepository;
+        _fieldRepository = fieldRepository;
+        _dtoRepository = dtoRepository;
+        _fs = fs;
+        _roslyn = roslyn;
+        _cli = cli;
+        _templateRenderer = templateRenderer;
+        _templateRenderer = templateRenderer;
+    }
+
+    public bool Execute(AppSetting appSetting, Action<string> log)
+    {
+        try
+        {
+            _appSetting = appSetting;
+            log(CreateProject());
+            log(_cli.AddPackage(_appSetting, "Microsoft.AspNetCore.Authentication.JwtBearer --version 10.0.4", _appSetting.WebAPILayerProjectName));
+            log(_cli.AddPackage(_appSetting, "Microsoft.AspNetCore.OpenApi --version 10.0.4", _appSetting.WebAPILayerProjectName));
+            log(_cli.AddPackage(_appSetting, "Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.WebAPILayerProjectName));
+            log(_cli.AddPackage(_appSetting, "Scalar.AspNetCore --version 2.14.1", _appSetting.WebAPILayerProjectName));
+            log(_cli.Restore(_appSetting, _appSetting.WebAPILayerProjectName));
+            log(_templateRenderer.GenerateStaticFiles(_appSetting, "API", _appSetting.WebAPILayerProjectName));
+            log(GenerateControllers());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log(ex.Message);
+            return false;
+        }
     }
 
     public string CreateProject()
@@ -31,19 +79,19 @@ public class NLayerAPIService : NLayerGeneratorBase
             if (Directory.Exists(layerPath) && File.Exists(csprojPath))
                 return "INFO: WebAPI layer project already exists.";
 
-            RunCommand(_appSetting.SolutionPath, "dotnet", $"new webapi -n {_appSetting.WebAPILayerProjectName}");
+            _cli.RunCommand(_appSetting.SolutionPath, "dotnet", $"new webapi -n {_appSetting.WebAPILayerProjectName}");
 
 
             bool isSlnx = File.Exists(Path.Combine(_appSetting.SolutionPath, $"{_appSetting.SolutionName}.slnx"));
       
-            RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.{(isSlnx ? "slnx" : "sln")} add {_appSetting.WebAPILayerProjectName}/{_appSetting.WebAPILayerProjectName}.csproj");
-            RemoveFile(layerPath, "Program.cs");
-            RemoveFile(layerPath, "appsettings.json");
+            _cli.RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.{(isSlnx ? "slnx" : "sln")} add {_appSetting.WebAPILayerProjectName}/{_appSetting.WebAPILayerProjectName}.csproj");
+            _fs.RemoveFile(layerPath, "Program.cs");
+            _fs.RemoveFile(layerPath, "appsettings.json");
 
-            RemoveFile(layerPath, "Controllers/WeatherForecastController.cs");
-            RemoveFile(layerPath, "WeatherForecast.cs");
+            _fs.RemoveFile(layerPath, "Controllers/WeatherForecastController.cs");
+            _fs.RemoveFile(layerPath, "WeatherForecast.cs");
 
-            RunCommand(layerPath, "dotnet", $"add reference ../{_appSetting.BusinessLayerProjectName}/{_appSetting.BusinessLayerProjectName}.csproj");
+            _cli.RunCommand(layerPath, "dotnet", $"add reference ../{_appSetting.BusinessLayerProjectName}/{_appSetting.BusinessLayerProjectName}.csproj");
 
             return "OK: WebAPI Project Created Successfully";
         }
@@ -78,7 +126,7 @@ public class NLayerAPIService : NLayerGeneratorBase
                 dtoUsings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Queries");
 
 
-            var code_controller = CompilationUnit(
+            var code_controller = _roslyn.CompilationUnit(
                 usings: [
                     "Microsoft.AspNetCore.Authorization",
                     "Microsoft.AspNetCore.Mvc",
@@ -87,24 +135,24 @@ public class NLayerAPIService : NLayerGeneratorBase
                     $"{_appSetting.WebAPILayerProjectName}.Controllers.Base",
                     ..dtoUsings
                 ],
-                nspace: NamespaceDeclaration(
+                nspace: _roslyn.NamespaceDeclaration(
                     value: $"{_appSetting.WebAPILayerProjectName}.Controllers",
                     members: [
-                        ClassDeclaration(
+                        _roslyn.ClassDeclaration(
                             name: $"{entity.Name}Controller",
                             modifiers: [SyntaxKind.PublicKeyword],
                             baseTypes: [SyntaxFactory.ParseTypeName("BaseController")],
                             members: [
-                                FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{entity.Name}Service", $"_{entity.Name.ToCamelCase()}Service"),
-                                ConstructorDeclaration(
+                                _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{entity.Name}Service", $"_{entity.Name.ToCamelCase()}Service"),
+                                _roslyn.ConstructorDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword],
                                     name: $"{entity.Name}Controller",
                                     parameters: [
-                                        ParameterDeclaration($"ILogger<{entity.Name}Controller>", "logger"),
-                                        ParameterDeclaration($"I{entity.Name}Service", $"{entity.Name.ToCamelCase()}Service")
+                                        _roslyn.ParameterDeclaration($"ILogger<{entity.Name}Controller>", "logger"),
+                                        _roslyn.ParameterDeclaration($"I{entity.Name}Service", $"{entity.Name.ToCamelCase()}Service")
                                     ],
                                     baseArgs: ["logger"],
-                                    statements: [StatementExpression($"_{entity.Name.ToCamelCase()}Service", $"{entity.Name.ToCamelCase()}Service")]
+                                    statements: [_roslyn.StatementExpression($"_{entity.Name.ToCamelCase()}Service", $"{entity.Name.ToCamelCase()}Service")]
                                 ),
                                 ..GenerateControllerMethods(entity, dtos)
                             ]
@@ -113,7 +161,7 @@ public class NLayerAPIService : NLayerGeneratorBase
                 )
             );
 
-            results.Add(AddFile(folderPath, $"{entity.Name}Controller.cs", code_controller.ToFullString()));
+            results.Add(_fs.AddFile(folderPath, $"{entity.Name}Controller.cs", code_controller.ToFullString()));
         }
 
         return string.Join("\n", results);
@@ -124,15 +172,15 @@ public class NLayerAPIService : NLayerGeneratorBase
         var methods = new List<MethodDeclarationSyntax>();
 
         List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
-        var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
+        var uniqueFieldParameters = uniqueFields.Select(f => _roslyn.ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
 
         string methodUniqueArgs = string.Join(", ", uniqueFields.Select(f => $"{f.Name.ToCamelCase()}: {f.Name.ToCamelCase()}"));
 
         string serviceName = $"_{entity.Name.ToCamelCase()}Service";
 
         #region GET
-        methods.Add(MethodDeclaration(
-            attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}")],
+        methods.Add(_roslyn.MethodDeclaration(
+            attributes: [GenerateHttpAttribute("HttpGet", $"{EntityCodeHelper.GetConstraintRule(entity)}")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Get",
             returnType: "Task<IActionResult>",
@@ -152,8 +200,8 @@ public class NLayerAPIService : NLayerGeneratorBase
 
             string methodName = dto.ServiceGetMethodName(entity);
 
-            methods.Add(MethodDeclaration(
-                attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}/{reqKind}")],
+            methods.Add(_roslyn.MethodDeclaration(
+                attributes: [GenerateHttpAttribute("HttpGet", $"{EntityCodeHelper.GetConstraintRule(entity)}/{reqKind}")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.PresentationLayerGetMethodName(entity),
                 returnType: "Task<IActionResult>",
@@ -169,13 +217,13 @@ public class NLayerAPIService : NLayerGeneratorBase
         #endregion
 
         #region GET LIST
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [GenerateHttpAttribute("HttpPost", "list")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "GetList",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration("DynamicRequest", "request", false)
+                _roslyn.ParameterDeclaration("DynamicRequest", "request", false)
             ],
             body: @$"
                 var result = await {serviceName}.GetListAsync(request);
@@ -190,13 +238,13 @@ public class NLayerAPIService : NLayerGeneratorBase
 
             string methodName = dto.ServiceGetListMethodName(entity);
 
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 attributes: [GenerateHttpAttribute("HttpPost", $"list/{reqKind}")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: dto.PresentationLayerListMethodName(entity),
                 returnType: "Task<IActionResult>",
                 parameters: [
-                    ParameterDeclaration("DynamicRequest", "request", false),
+                    _roslyn.ParameterDeclaration("DynamicRequest", "request", false),
                 ],
                 body: $@"
                     var result = await {serviceName}.{methodName}(request);
@@ -208,13 +256,13 @@ public class NLayerAPIService : NLayerGeneratorBase
 
         #region CREATE
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [GenerateHttpAttribute("HttpPost")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Create",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true)
+                _roslyn.ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.CreateAsync(request);
@@ -226,8 +274,8 @@ public class NLayerAPIService : NLayerGeneratorBase
         #region UPDATE
         var updateDto = dtos.FirstOrDefault(f => f.Id == entity.UpdateDtoId);
 
-        methods.Add(MethodDeclaration(
-            attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}/update")],
+        methods.Add(_roslyn.MethodDeclaration(
+            attributes: [GenerateHttpAttribute("HttpGet", $"{EntityCodeHelper.GetConstraintRule(entity)}/update")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Update",
             returnType: "Task<IActionResult>",
@@ -240,13 +288,13 @@ public class NLayerAPIService : NLayerGeneratorBase
             "
         ));
 
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [GenerateHttpAttribute("HttpPut")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Update",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true)
+                _roslyn.ParameterDeclaration(updateDto?.Name ?? entity.Name, "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.UpdateAsync(request);
@@ -259,14 +307,14 @@ public class NLayerAPIService : NLayerGeneratorBase
         var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
         if (deleteDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 attributes: [GenerateHttpAttribute("HttpPost", "delete")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Delete",
                 returnType: "Task<IActionResult>",
                 parameters:
                 [
-                    ParameterDeclaration(deleteDto.Name, "request", true)
+                    _roslyn.ParameterDeclaration(deleteDto.Name, "request", true)
                 ],
                 body: $@"
                     await {serviceName}.DeleteAsync(request);
@@ -276,8 +324,8 @@ public class NLayerAPIService : NLayerGeneratorBase
         }
         else
         {
-            methods.Add(MethodDeclaration(
-                attributes: [GenerateHttpAttribute("HttpDelete", $"{entity.GetConstraintRule()}")],
+            methods.Add(_roslyn.MethodDeclaration(
+                attributes: [GenerateHttpAttribute("HttpDelete", $"{EntityCodeHelper.GetConstraintRule(entity)}")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Delete",
                 returnType: "Task<IActionResult>",
@@ -296,8 +344,8 @@ public class NLayerAPIService : NLayerGeneratorBase
         #region RESTORE
         if (entity.SoftDeletable)
         {
-            methods.Add(MethodDeclaration(
-                attributes: [GenerateHttpAttribute("HttpGet", $"{entity.GetConstraintRule()}/restore")],
+            methods.Add(_roslyn.MethodDeclaration(
+                attributes: [GenerateHttpAttribute("HttpGet", $"{EntityCodeHelper.GetConstraintRule(entity)}/restore")],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Restore",
                 returnType: "Task<IActionResult>",
@@ -313,13 +361,13 @@ public class NLayerAPIService : NLayerGeneratorBase
         #endregion
 
         #region PAGINATION 
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [GenerateHttpAttribute("HttpPost", "pagination")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Pagination",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration("DynamicPaginationRequest", "request", true)
+                _roslyn.ParameterDeclaration("DynamicPaginationRequest", "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.PaginationAsync(request);
@@ -329,26 +377,26 @@ public class NLayerAPIService : NLayerGeneratorBase
         #endregion
 
         #region DATATABLE 
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [GenerateHttpAttribute("HttpPost", "datatable/client")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DatatableClientSide",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true)
+                _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.DatatableClientSideAsync(request);
                 return ToAction(result);
             "
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [GenerateHttpAttribute("HttpPost", "datatable/server")],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DatatableServerSide",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true)
+                _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.DatatableServerSideAsync(request);
@@ -412,7 +460,7 @@ public class NLayerAPIService : NLayerGeneratorBase
                     options.Password.RequireUppercase = false;
 
                     options.User.RequireUniqueEmail = false;
-                    options.User.AllowedUserNameCharacters = ""abcçdefgğhiıjklmnoöpqrsştuüvwxyzABCÇDEFGĞHIİJKLMNOÖPQRSŞTUÜVWXYZ0123456789-._@+/*|!,;:()&#?[] "";
+                    options.User.AllowedUserNameCharacters = ""abcÃƒÂ§defgÃ„Å¸hiÃ„Â±jklmnoÃƒÂ¶pqrsÃ…Å¸tuÃƒÂ¼vwxyzABCÃƒâ€¡DEFGÃ„ÂHIÃ„Â°JKLMNOÃƒâ€“PQRSÃ…ÂTUÃƒÅ“VWXYZ0123456789-._@+/*|!,;:()&#?[] "";
                 }})
                 .AddEntityFrameworkStores<AppDbContext>()
                 .AddDefaultTokenProviders();
@@ -449,3 +497,9 @@ public class NLayerAPIService : NLayerGeneratorBase
         ";
     }
 }
+
+
+
+
+
+

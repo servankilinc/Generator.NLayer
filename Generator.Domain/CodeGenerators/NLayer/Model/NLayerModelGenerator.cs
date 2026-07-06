@@ -1,4 +1,5 @@
-using Generator.Domain.CodeGenerators.NLayer.Base;
+using Generator.Domain.CodeGenerators.Pipeline;
+using Generator.Domain.CodeGenerators.Services;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Repository;
@@ -9,49 +10,93 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Generator.Domain.CodeGenerators.NLayer.Model;
 
-public class NLayerModelGenerator : NLayerGeneratorBase
+public class NLayerModelGenerator : IGenerationStep
 {
     private readonly EntityRepository _entityRepository;
     private readonly DtoRepository _dtoRepository;
     private readonly FieldRepository _fieldRepository;
     private readonly RelationRepository _relationRepository;
     private readonly DtoFieldRepository _dtoFieldRepository;
-    public NLayerModelGenerator(AppSetting appSetting) : base(appSetting)
+    
+    private readonly FileSystemService _fs;
+    private readonly RoslynSyntaxHelper _roslyn;
+    private readonly ValidationRuleGenerator _validation;
+    private readonly DotnetCliService _cli;
+    private readonly TemplateRenderer _templateRenderer;
+
+    public string Name => "Model Layer";
+    public int Order => 2;
+    public int ProgressWeight => 20;
+
+    public NLayerModelGenerator(
+        EntityRepository entityRepository,
+        DtoRepository dtoRepository,
+        FieldRepository fieldRepository,
+        RelationRepository relationRepository,
+        DtoFieldRepository dtoFieldRepository,
+        FileSystemService fs,
+        RoslynSyntaxHelper roslyn,
+        ValidationRuleGenerator validation,
+        DotnetCliService cli,
+        TemplateRenderer templateRenderer)
     {
-        _entityRepository = new();
-        _dtoRepository = new();
-        _fieldRepository = new();
-        _relationRepository = new();
-        _dtoFieldRepository = new();
+        _entityRepository = entityRepository;
+        _dtoRepository = dtoRepository;
+        _fieldRepository = fieldRepository;
+        _relationRepository = relationRepository;
+        _dtoFieldRepository = dtoFieldRepository;
+        _fs = fs;
+        _roslyn = roslyn;
+        _validation = validation;
+        _cli = cli;
+        _templateRenderer = templateRenderer;
+    }
+
+    public bool Execute(AppSetting appSetting, Action<string> log)
+    {
+        try
+        {
+            log(_cli.CreateClassLibraryProject(appSetting, appSetting.ModelLayerProjectName, new[] { $"../{appSetting.CoreLayerProjectName}/{appSetting.CoreLayerProjectName}.csproj" }));
+            log(_templateRenderer.GenerateStaticFiles(appSetting, "Model", appSetting.ModelLayerProjectName));
+            log(GenerateAuthModels(appSetting));
+            log(GenerateEntities(appSetting));
+            log(GenerateDtos(appSetting));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log(ex.Message);
+            return false;
+        }
     }
 
     #region Auth-Models
-    public string GenerateAuthModels()
+    private string GenerateAuthModels(AppSetting appSetting)
     {
         var results = new List<string>();
-        var uniqueFields = _fieldRepository.GetAll(f => f.EntityId == _appSetting.UserEntityId && f.IsUnique);
+        var uniqueFields = _fieldRepository.GetAll(f => f.EntityId == appSetting.UserEntityId && f.IsUnique);
 
         #region 1. Login Models
-        var loginRequest = CompilationUnit(
+        var loginRequest = _roslyn.CompilationUnit(
             usings: [
                 "FluentValidation",
-                $"{_appSetting.CoreLayerProjectName}.Utils.CriticalData"
+                $"{appSetting.CoreLayerProjectName}.Utils.CriticalData"
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Auth.Login",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "LoginRequest",
                         members: [
-                            PropertyDeclaration("string", "Email", false),
-                            PropertyDeclaration("string", "UserName", false),
-                            PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
-                            PropertyDeclaration("Guid", "DeviceId", false),
-                            PropertyDeclaration("string", "ClientType", true)
+                            _roslyn.PropertyDeclaration("string", "Email", false),
+                            _roslyn.PropertyDeclaration("string", "UserName", false),
+                            _roslyn.PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
+                            _roslyn.PropertyDeclaration("Guid", "DeviceId", false),
+                            _roslyn.PropertyDeclaration("string", "ClientType", true)
                         ]
                     ),
-                    ValidatorClassDeclaration(
+                    _roslyn.ValidatorClassDeclaration(
                         modelName: "LoginRequest",
                         ruleList: [
                             "RuleFor(b => b).Must(b => !string.IsNullOrWhiteSpace(b.Email) || !string.IsNullOrWhiteSpace(b.UserName)).WithMessage(\"Either Email or UserName must be provided.\");",
@@ -64,51 +109,51 @@ public class NLayerModelGenerator : NLayerGeneratorBase
                 ]
             )
         );
-        var loginResponse = CompilationUnit(
-            usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.Login",
+        var loginResponse = _roslyn.CompilationUnit(
+            usings: [$"{appSetting.CoreLayerProjectName}.Utils.Auth"],
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Auth.Login",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "LoginResponse",
                         members: [
-                            PropertyDeclaration("IList<string>", "Roles", false),
-                            PropertyDeclaration("AccessToken", "AccessToken", true),
-                            PropertyDeclaration("Guid", "DeviceId", true)
+                            _roslyn.PropertyDeclaration("IList<string>", "Roles", false),
+                            _roslyn.PropertyDeclaration("AccessToken", "AccessToken", true),
+                            _roslyn.PropertyDeclaration("Guid", "DeviceId", true)
                         ]
                     ),
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "LoginTrustedResponse",
                         baseTypes: [SyntaxFactory.ParseTypeName("LoginResponse")],
-                        members: [PropertyDeclaration("string", "RefreshToken", true)]
+                        members: [_roslyn.PropertyDeclaration("string", "RefreshToken", true)]
                     )
                 ]
             )
         );
 
-        string folderPathLogin = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "Login");
-        results.Add(AddFile(folderPathLogin, "LoginRequest.cs", loginRequest.ToFullString()));
-        results.Add(AddFile(folderPathLogin, "LoginResponse.cs", loginResponse.ToFullString()));
+        string folderPathLogin = Path.Combine(appSetting.SolutionPath, appSetting.ModelLayerProjectName, "Auth", "Login");
+        results.Add(_fs.AddFile(folderPathLogin, "LoginRequest.cs", loginRequest.ToFullString()));
+        results.Add(_fs.AddFile(folderPathLogin, "LoginResponse.cs", loginResponse.ToFullString()));
         #endregion
 
         #region 2. Refresh Auth Models
-        var refreshAuthRequest = CompilationUnit(
+        var refreshAuthRequest = _roslyn.CompilationUnit(
             usings: ["FluentValidation"],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Auth.Refresh",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshAuthRequest",
                         members: [
-                            PropertyDeclaration("string", "RefreshToken", false),
-                            PropertyDeclaration("Guid", "DeviceId", true),
-                            PropertyDeclaration(uniqueFields.FirstOrDefault()?.GetMapedTypeName() ?? "Guid", "UserId", true)
+                            _roslyn.PropertyDeclaration("string", "RefreshToken", false),
+                            _roslyn.PropertyDeclaration("Guid", "DeviceId", true),
+                            _roslyn.PropertyDeclaration(uniqueFields.FirstOrDefault()?.GetMapedTypeName() ?? "Guid", "UserId", true)
                         ]
                     ),
-                    ValidatorClassDeclaration(
+                    _roslyn.ValidatorClassDeclaration(
                         modelName: "RefreshAuthRequest",
                         ruleList: [
                             "RuleFor(b => b.UserId).NotNull().NotEmpty();",
@@ -119,55 +164,55 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             )
         );
 
-        var refreshAuthResponse = CompilationUnit(
-            usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.Refresh",
+        var refreshAuthResponse = _roslyn.CompilationUnit(
+            usings: [$"{appSetting.CoreLayerProjectName}.Utils.Auth"],
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Auth.Refresh",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshAuthResponse",
                         members: [
-                            PropertyDeclaration("IList<string>", "Roles", false),
-                            PropertyDeclaration("AccessToken", "AccessToken", true),
+                            _roslyn.PropertyDeclaration("IList<string>", "Roles", false),
+                            _roslyn.PropertyDeclaration("AccessToken", "AccessToken", true),
                         ]
                     ),
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshAuthTrustedResponse",
                         baseTypes: [SyntaxFactory.ParseTypeName("RefreshAuthResponse")],
-                        members: [PropertyDeclaration("string", "RefreshToken", true)]
+                        members: [_roslyn.PropertyDeclaration("string", "RefreshToken", true)]
                     )
                 ]
             )
         );
 
-        string folderPathRefreshAuth = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "RefreshAuth");
-        results.Add(AddFile(folderPathRefreshAuth, "RefreshAuthRequest.cs", refreshAuthRequest.ToFullString()));
-        results.Add(AddFile(folderPathRefreshAuth, "RefreshAuthResponse.cs", refreshAuthResponse.ToFullString()));
+        string folderPathRefreshAuth = Path.Combine(appSetting.SolutionPath, appSetting.ModelLayerProjectName, "Auth", "RefreshAuth");
+        results.Add(_fs.AddFile(folderPathRefreshAuth, "RefreshAuthRequest.cs", refreshAuthRequest.ToFullString()));
+        results.Add(_fs.AddFile(folderPathRefreshAuth, "RefreshAuthResponse.cs", refreshAuthResponse.ToFullString()));
         #endregion
 
         #region 3. Signup Models
-        var code_SignUpRequest = CompilationUnit(
+        var code_SignUpRequest = _roslyn.CompilationUnit(
             usings: [
                 "FluentValidation",
-                $"{_appSetting.CoreLayerProjectName}.Utils.CriticalData"
+                $"{appSetting.CoreLayerProjectName}.Utils.CriticalData"
             ],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Auth.SignUp",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SignUpRequest",
                         members: [
-                            PropertyDeclaration("string", "Email", true),
-                            PropertyDeclaration("string", "UserName", true),
-                            PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
-                            PropertyDeclaration("Guid", "DeviceId", false),
-                            PropertyDeclaration("string", "ClientType", true)
+                            _roslyn.PropertyDeclaration("string", "Email", true),
+                            _roslyn.PropertyDeclaration("string", "UserName", true),
+                            _roslyn.PropertyDeclaration("string", "Password", true, attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("CriticalData"))]),
+                            _roslyn.PropertyDeclaration("Guid", "DeviceId", false),
+                            _roslyn.PropertyDeclaration("string", "ClientType", true)
                         ]
                     ),
-                    ValidatorClassDeclaration(
+                    _roslyn.ValidatorClassDeclaration(
                         modelName: "SignUpRequest",
                         ruleList:  [
                             "RuleFor(b => b.Email).NotNull().NotEmpty().EmailAddress();",
@@ -180,33 +225,33 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             )
         );
 
-        var code_SignUpResponse = CompilationUnit(
-            usings: [$"{_appSetting.CoreLayerProjectName}.Utils.Auth"],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Auth.SignUp",
+        var code_SignUpResponse = _roslyn.CompilationUnit(
+            usings: [$"{appSetting.CoreLayerProjectName}.Utils.Auth"],
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Auth.SignUp",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SignUpResponse",
                         members: [
-                            PropertyDeclaration("IList<string>", "Roles", false),
-                            PropertyDeclaration("AccessToken", "AccessToken", true),
-                            PropertyDeclaration("Guid", "DeviceId", true)
+                            _roslyn.PropertyDeclaration("IList<string>", "Roles", false),
+                            _roslyn.PropertyDeclaration("AccessToken", "AccessToken", true),
+                            _roslyn.PropertyDeclaration("Guid", "DeviceId", true)
                         ]
                     ),
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SignUpTrustedResponse",
                         baseTypes: [SyntaxFactory.ParseTypeName("SignUpResponse")],
-                        members: [PropertyDeclaration("string", "RefreshToken", true)]
+                        members: [_roslyn.PropertyDeclaration("string", "RefreshToken", true)]
                     )
                 ]
             )
         );
 
-        string folderPathSignup = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Auth", "SignUp");
-        results.Add(AddFile(folderPathSignup, "SignUpRequest.cs", code_SignUpRequest.ToFullString()));
-        results.Add(AddFile(folderPathSignup, "SignUpResponse.cs", code_SignUpResponse.ToFullString()));
+        string folderPathSignup = Path.Combine(appSetting.SolutionPath, appSetting.ModelLayerProjectName, "Auth", "SignUp");
+        results.Add(_fs.AddFile(folderPathSignup, "SignUpRequest.cs", code_SignUpRequest.ToFullString()));
+        results.Add(_fs.AddFile(folderPathSignup, "SignUpResponse.cs", code_SignUpResponse.ToFullString()));
         #endregion
 
         return string.Join("\n", results);
@@ -214,7 +259,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
     #endregion
 
     #region Entities
-    public string GenerateEntities()
+    private string GenerateEntities(AppSetting appSetting)
     {
         var results = new List<string>();
 
@@ -222,58 +267,58 @@ public class NLayerModelGenerator : NLayerGeneratorBase
 
         foreach (var entity in entities)
         {
-            string code = HandleGenerateEntity(entity);
+            string code = HandleGenerateEntity(entity, appSetting);
 
-            string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Entities");
-            results.Add(AddFile(folderPath, $"{entity.Name}.cs", code));
+            string folderPath = Path.Combine(appSetting.SolutionPath, appSetting.ModelLayerProjectName, "Entities");
+            results.Add(_fs.AddFile(folderPath, $"{entity.Name}.cs", code));
         }
 
         #region RefreshToken
-        if (_appSetting.IsThereIdentity)
+        if (appSetting.IsThereIdentity)
         {
-            var identityTypeConfigs = _appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
+            var identityTypeConfigs = appSetting.GetIdentityModelTypeNames(_entityRepository, _fieldRepository);
 
-            string code_refreshToken = CompilationUnit(
-                usings: [$"{_appSetting.CoreLayerProjectName}.Model"],
-                nspace: NamespaceDeclaration(
-                    value: $"{_appSetting.ModelLayerProjectName}.Entities",
+            string code_refreshToken = _roslyn.CompilationUnit(
+                usings: [$"{appSetting.CoreLayerProjectName}.Model"],
+                nspace: _roslyn.NamespaceDeclaration(
+                    value: $"{appSetting.ModelLayerProjectName}.Entities",
                     members: [
-                        ClassDeclaration(
+                        _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "RefreshToken",
                         baseTypes: [SyntaxFactory.IdentifierName("IEntity")],
                         members: [
-                            PropertyDeclaration("Guid", "Id", true),
-                            PropertyDeclaration(identityTypeConfigs.IdentityKeyType, "UserId", true),
-                            PropertyDeclaration("Guid", "DeviceId", true),
-                            PropertyDeclaration("string", "IpAddress", false),
-                            PropertyDeclaration("string", "ClientType", false),
-                            PropertyDeclaration("string", "Token", true),
-                            PropertyDeclaration("DateTime", "ExpirationUtc", true),
-                            PropertyDeclaration("DateTime", "CreateDateUtc", true),
-                            PropertyDeclaration("int", "TTL", true),
-                            PropertyDeclaration("bool", "IsRevoked", true),
-                            PropertyDeclaration($"virtual {identityTypeConfigs.IdentityUserType}?", "User", false)
+                            _roslyn.PropertyDeclaration("Guid", "Id", true),
+                            _roslyn.PropertyDeclaration(identityTypeConfigs.IdentityKeyType, "UserId", true),
+                            _roslyn.PropertyDeclaration("Guid", "DeviceId", true),
+                            _roslyn.PropertyDeclaration("string", "IpAddress", false),
+                            _roslyn.PropertyDeclaration("string", "ClientType", false),
+                            _roslyn.PropertyDeclaration("string", "Token", true),
+                            _roslyn.PropertyDeclaration("DateTime", "ExpirationUtc", true),
+                            _roslyn.PropertyDeclaration("DateTime", "CreateDateUtc", true),
+                            _roslyn.PropertyDeclaration("int", "TTL", true),
+                            _roslyn.PropertyDeclaration("bool", "IsRevoked", true),
+                            _roslyn.PropertyDeclaration($"virtual {identityTypeConfigs.IdentityUserType}?", "User", false)
                         ])
                     ]
                 )
             ).ToFullString();
 
-            string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Entities");
-            results.Add(AddFile(folderPath, "RefreshToken.cs", code_refreshToken));
+            string folderPath = Path.Combine(appSetting.SolutionPath, appSetting.ModelLayerProjectName, "Entities");
+            results.Add(_fs.AddFile(folderPath, "RefreshToken.cs", code_refreshToken));
         }
         #endregion
 
         return string.Join("\n", results);
     }
 
-    private string HandleGenerateEntity(Entity entity)
+    private string HandleGenerateEntity(Entity entity, AppSetting appSetting)
     {
         // 1) Implemantation List
         List<string> interfaces = new();
-        if (_appSetting.IsThereUser && _appSetting.UserEntityId == entity.Id)
+        if (appSetting.IsThereUser && appSetting.UserEntityId == entity.Id)
             interfaces.Add($"IdentityUser<{entity.Fields.FirstOrDefault(f => f.IsUnique)?.GetMapedTypeName()}>");
-        if (_appSetting.IsThereRole && _appSetting.RoleEntityId == entity.Id)
+        if (appSetting.IsThereRole && appSetting.RoleEntityId == entity.Id)
             interfaces.Add($"IdentityRole<{entity.Fields.FirstOrDefault(f => f.IsUnique)?.GetMapedTypeName()}>");
 
         interfaces.Add(Statics.IEntity);
@@ -290,42 +335,42 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             string fieldTypeName = field.GetMapedTypeName();
             if (field.IsList) fieldTypeName = $"List<{fieldTypeName}>";
 
-            properties.Add(PropertyDeclaration(fieldTypeName, field.Name, field.IsRequired));
+            properties.Add(_roslyn.PropertyDeclaration(fieldTypeName, field.Name, field.IsRequired));
         }
 
-        // 3) Implemented İnterface List
+        // 3) Implemented Ä°nterface List
         if (entity.Auditable)
         {
-            properties.Add(PropertyDeclaration("string", "CreatedBy", false));
-            properties.Add(PropertyDeclaration("string", "UpdatedBy", false));
-            properties.Add(PropertyDeclaration("DateTime", "CreateDateUtc", false));
-            properties.Add(PropertyDeclaration("DateTime", "UpdateDateUtc", false));
+            properties.Add(_roslyn.PropertyDeclaration("string", "CreatedBy", false));
+            properties.Add(_roslyn.PropertyDeclaration("string", "UpdatedBy", false));
+            properties.Add(_roslyn.PropertyDeclaration("DateTime", "CreateDateUtc", false));
+            properties.Add(_roslyn.PropertyDeclaration("DateTime", "UpdateDateUtc", false));
         }
         if (entity.SoftDeletable)
         {
-            properties.Add(PropertyDeclaration("string", "DeletedBy", false));
-            properties.Add(PropertyDeclaration("bool", "IsDeleted"));
-            properties.Add(PropertyDeclaration("DateTime", "DeletedDateUtc", false));
+            properties.Add(_roslyn.PropertyDeclaration("string", "DeletedBy", false));
+            properties.Add(_roslyn.PropertyDeclaration("bool", "IsDeleted"));
+            properties.Add(_roslyn.PropertyDeclaration("DateTime", "DeletedDateUtc", false));
         }
 
         // 4) Virtual Propert List
-        HandleVirtualProps(ref properties, entity.Id);
+        HandleVirtualProps(ref properties, entity.Id, appSetting);
 
 
         // 5) Usings
         List<string> usings = new(){
-            $"{_appSetting.CoreLayerProjectName}.Model"
+            $"{appSetting.CoreLayerProjectName}.Model"
         };
 
-        if (_appSetting.UserEntityId == entity.Id || _appSetting.RoleEntityId == entity.Id)
+        if (appSetting.UserEntityId == entity.Id || appSetting.RoleEntityId == entity.Id)
             usings.Add("Microsoft.AspNetCore.Identity");
 
-        return CompilationUnit(
+        return _roslyn.CompilationUnit(
             usings: [.. usings],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Entities",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Entities",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: entity.Name,
                         baseTypes: [.. interfaces.Select(i => SyntaxFactory.ParseTypeName(i))],
@@ -336,7 +381,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         ).ToFullString();
     }
 
-    private void HandleVirtualProps(ref List<PropertyDeclarationSyntax> propertyList, int entityId)
+    private void HandleVirtualProps(ref List<PropertyDeclarationSyntax> propertyList, int entityId, AppSetting appSetting)
     {
         var relationsOnPrimary = _relationRepository.GetRelationsOnPrimary(entityId);
         var relationsOnForeign = _relationRepository.GetRelationsOnForeign(entityId);
@@ -345,18 +390,18 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         {
             if (relation.RelationTypeId == (int)Enums.RelationTypeEnums.OneToOne)
             {
-                propertyList.Add(PropertyDeclaration($"{relation.ForeignField.Entity.Name}?", relation.PrimaryEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration($"{relation.ForeignField.Entity.Name}?", relation.PrimaryEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
         }
         foreach (var relation in relationsOnForeign)
         {
             if (relation.RelationTypeId == (int)Enums.RelationTypeEnums.OneToOne)
             {
-                propertyList.Add(PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
             else if (relation.RelationTypeId == (int)Enums.RelationTypeEnums.OneToMany)
             {
-                propertyList.Add(PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration($"{relation.PrimaryField.Entity.Name}?", relation.ForeignEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
         }
 
@@ -364,19 +409,19 @@ public class NLayerModelGenerator : NLayerGeneratorBase
         {
             if (relation.RelationTypeId == (int)Enums.RelationTypeEnums.OneToMany)
             {
-                propertyList.Add(PropertyDeclaration($"ICollection<{relation.ForeignField.Entity.Name}>?", relation.PrimaryEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration($"ICollection<{relation.ForeignField.Entity.Name}>?", relation.PrimaryEntityVirPropName, modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
             }
         }
 
-        if (entityId == _appSetting.UserEntityId)
+        if (entityId == appSetting.UserEntityId)
         {
-            propertyList.Add(PropertyDeclaration("ICollection<RefreshToken>?", "RefreshTokens", modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
+            propertyList.Add(_roslyn.PropertyDeclaration("ICollection<RefreshToken>?", "RefreshTokens", modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.VirtualKeyword]));
         }
     }
     #endregion
 
     #region Dtos
-    public string GenerateDtos()
+    private string GenerateDtos(AppSetting appSetting)
     {
         var results = new List<string>();
 
@@ -384,25 +429,25 @@ public class NLayerModelGenerator : NLayerGeneratorBase
 
         foreach (var dto in dtos)
         {
-            string code = HandleGeneraterDto(dto);
+            string code = HandleGenerateDto(dto, appSetting);
 
             string commandOrQuery = dto.CrudTypeId == (int)Enums.CrudTypeEnums.Read ? "Queries" : "Commands";
-            string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.ModelLayerProjectName, "Dtos", dto.RelatedEntity.Name, commandOrQuery);
+            string folderPath = Path.Combine(appSetting.SolutionPath, appSetting.ModelLayerProjectName, "Dtos", dto.RelatedEntity.Name, commandOrQuery);
 
-            results.Add(AddFile(folderPath, $"{dto.Name}.cs", code));
+            results.Add(_fs.AddFile(folderPath, $"{dto.Name}.cs", code));
         }
         return string.Join("\n", results);
     }
 
-    private string HandleGeneraterDto(Dto dto)
+    private string HandleGenerateDto(Dto dto, AppSetting appSetting)
     {
         var dtoFieldList = _dtoFieldRepository.GetAll(
             filter: f => f.DtoId == dto.Id,
             include: i => i
                 .Include(x => x.SourceField).ThenInclude(x => x.FieldType)
                 .Include(x => x.SourceField).ThenInclude(x => x.Entity).ThenInclude(x => x.Dtos)
-                .Include(x => x.Validations).ThenInclude(x => x.ValidatorType)
-                .Include(x => x.Validations).ThenInclude(x => x.ValidationParams)
+                .Include(x => x.Validations!).ThenInclude(x => x.ValidatorType)
+                .Include(x => x.Validations!).ThenInclude(x => x.ValidationParams)
             );
         bool isExistValidation = dtoFieldList.Any(f => f.Validations != null && f.Validations.Any());
 
@@ -417,7 +462,7 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             {
                 // if there is no unique field with same name in dto
                 if (dtoFieldList.Any(f => f.SourceFieldId == unqField.Id && f.Name.Trim() == unqField.Name.Trim()) == false)
-                    properties.Add(PropertyDeclaration(unqField.GetMapedTypeName(), unqField.Name, true));
+                    properties.Add(_roslyn.PropertyDeclaration(unqField.GetMapedTypeName(), unqField.Name, true));
             }
         }
 
@@ -435,34 +480,34 @@ public class NLayerModelGenerator : NLayerGeneratorBase
             if (!dtoField.IsRequired)
                 fieldTypeName = $"{fieldTypeName}?";
 
-            properties.Add(PropertyDeclaration(fieldTypeName, dtoField.Name, dtoField.IsRequired));
+            properties.Add(_roslyn.PropertyDeclaration(fieldTypeName, dtoField.Name, dtoField.IsRequired));
         }
         if (isReportDto)
         {
             if (dto.RelatedEntity.Auditable)
             {
-                properties.Add(PropertyDeclaration("string", "CreatedBy", false));
-                properties.Add(PropertyDeclaration("string", "UpdatedBy", false));
-                properties.Add(PropertyDeclaration("DateTime", "CreateDateUtc", false));
-                properties.Add(PropertyDeclaration("DateTime", "UpdateDateUtc", false));
+                properties.Add(_roslyn.PropertyDeclaration("string", "CreatedBy", false));
+                properties.Add(_roslyn.PropertyDeclaration("string", "UpdatedBy", false));
+                properties.Add(_roslyn.PropertyDeclaration("DateTime", "CreateDateUtc", false));
+                properties.Add(_roslyn.PropertyDeclaration("DateTime", "UpdateDateUtc", false));
             }
             if (dto.RelatedEntity.SoftDeletable)
             {
-                properties.Add(PropertyDeclaration("string", "DeletedBy", false));
-                properties.Add(PropertyDeclaration("bool", "IsDeleted", true));
-                properties.Add(PropertyDeclaration("DateTime", "DeletedDateUtc", false));
+                properties.Add(_roslyn.PropertyDeclaration("string", "DeletedBy", false));
+                properties.Add(_roslyn.PropertyDeclaration("bool", "IsDeleted", true));
+                properties.Add(_roslyn.PropertyDeclaration("DateTime", "DeletedDateUtc", false));
             }
         }
         #endregion
 
         #region 2) Usings
         List<string> usings = new(){
-            $"{_appSetting.CoreLayerProjectName}.Model"
+            $"{appSetting.CoreLayerProjectName}.Model"
         };
         if (isExistValidation)
             usings.Add("FluentValidation");
         if (dtoFieldList.Any(f => f.SourceField.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Entity))
-            usings.Add($"{_appSetting.ModelLayerProjectName}.Entities");
+            usings.Add($"{appSetting.ModelLayerProjectName}.Entities");
 
         if (dtoFieldList.Any(f => f.SourceField.FieldType.SourceTypeId == (int)Enums.FieldTypeSourceEnums.Dto))
         {
@@ -474,16 +519,16 @@ public class NLayerModelGenerator : NLayerGeneratorBase
 
                 addedSourceEntites.Add(dtoField.SourceField.EntityId);
                 if (dtoField.SourceField.Entity.Dtos?.Any(f => f.CrudTypeId != (int)Enums.CrudTypeEnums.Read) == true)
-                    usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Commands");
+                    usings.Add($"{appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Commands");
                 if (dtoField.SourceField.Entity.Dtos?.Any(f => f.CrudTypeId == (int)Enums.CrudTypeEnums.Read) == true)
-                    usings.Add($"{_appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Queries");
+                    usings.Add($"{appSetting.ModelLayerProjectName}.Dtos.{dtoField.SourceField.Entity.Name}.Queries");
             }
         }
         #endregion
 
         List<ClassDeclarationSyntax> classes = new()
         {
-            ClassDeclaration(
+            _roslyn.ClassDeclaration(
                 modifiers: [SyntaxKind.PublicKeyword],
                 name: dto.Name,
                 baseTypes: [SyntaxFactory.ParseTypeName("IDto")],
@@ -501,21 +546,26 @@ public class NLayerModelGenerator : NLayerGeneratorBase
 
                 foreach (var validation in dtoField.Validations)
                 {
-                    string rule = ValidationRule(validation, dtoField.Name, validation.ErrorMessage);
+                    string rule = _validation.ValidationRule(validation, dtoField.Name, validation.ErrorMessage);
                     if (string.IsNullOrWhiteSpace(rule)) continue;
                     rules.Add(rule);
                 }
             }
-            classes.Add(ValidatorClassDeclaration(dto.Name, [.. rules]));
+            classes.Add(_roslyn.ValidatorClassDeclaration(dto.Name, [.. rules]));
         }
 
-        return CompilationUnit(
+        return _roslyn.CompilationUnit(
             usings: [.. usings],
-            nspace: NamespaceDeclaration(
-                value: $"{_appSetting.ModelLayerProjectName}.Dtos.{dto.RelatedEntity.Name}.{(dto.CrudTypeId == (int)Enums.CrudTypeEnums.Read ? "Queries" : "Commands")}",
+            nspace: _roslyn.NamespaceDeclaration(
+                value: $"{appSetting.ModelLayerProjectName}.Dtos.{dto.RelatedEntity.Name}.{(dto.CrudTypeId == (int)Enums.CrudTypeEnums.Read ? "Queries" : "Commands")}",
                 members: [.. classes]
             )
         ).ToFullString();
     }
     #endregion
 }
+
+
+
+
+

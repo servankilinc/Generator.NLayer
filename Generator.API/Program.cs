@@ -86,6 +86,7 @@ builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.TemplateRend
 builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.RoslynSyntaxHelper>();
 builder.Services.AddScoped<Generator.Domain.CodeGenerators.Services.ValidationRuleGenerator>();
 
+builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerSolutionGenerator>();
 builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerCoreGenerator>();
 builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerModelGenerator>();
 builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.IGenerationStep, NLayerDataAccessGenerator>();

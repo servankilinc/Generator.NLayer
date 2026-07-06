@@ -1,7 +1,9 @@
-﻿using Generator.Domain.CodeGenerators.NLayer.Base;
+using Generator.Domain.CodeGenerators.Pipeline;
+using Generator.Domain.CodeGenerators.Services;
 using Generator.Domain.Core;
 using Generator.Domain.Core.Entities;
 using Generator.Domain.Repository;
+using Generator.Domain.CodeGenerators.Helpers;
 using Humanizer;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -11,18 +13,66 @@ using System.Text;
 
 namespace Generator.Domain.CodeGenerators.NLayer.WebUI;
 
-public class NLayerWebUIGenerator : NLayerGeneratorBase
+public class NLayerWebUIGenerator : IGenerationStep
 {
     private readonly EntityRepository _entityRepository;
     private readonly FieldRepository _fieldRepository;
     private readonly DtoRepository _dtoRepository;
     private readonly RelationRepository _relationRepository;
-    public NLayerWebUIGenerator(AppSetting appSetting) : base(appSetting)
+
+    private readonly FileSystemService _fs;
+    private readonly RoslynSyntaxHelper _roslyn;
+    private readonly DotnetCliService _cli;
+    private readonly TemplateRenderer _templateRenderer;
+
+    private AppSetting _appSetting = null!;
+
+    public string Name => "WebUI Layer";
+    public int Order => 6;
+    public int ProgressWeight => 15;
+
+    public NLayerWebUIGenerator(
+        EntityRepository entityRepository,
+        FieldRepository fieldRepository,
+        DtoRepository dtoRepository,
+        RelationRepository relationRepository,
+        FileSystemService fs,
+        RoslynSyntaxHelper roslyn,
+        DotnetCliService cli, TemplateRenderer templateRenderer)
     {
-        _entityRepository = new();
-        _fieldRepository = new();
-        _dtoRepository = new();
-        _relationRepository = new();
+        _entityRepository = entityRepository;
+        _fieldRepository = fieldRepository;
+        _dtoRepository = dtoRepository;
+        _relationRepository = relationRepository;
+        _fs = fs;
+        _roslyn = roslyn;
+        _cli = cli;
+        _templateRenderer = templateRenderer;
+    }
+
+    public bool Execute(AppSetting appSetting, Action<string> log)
+    {
+        try
+        {
+            _appSetting = appSetting;
+            log(CreateProject());
+            log(_cli.AddPackage(_appSetting, "FluentValidation.AspNetCore --version 11.3.1", _appSetting.WebUILayerProjectName));
+            log(_cli.AddPackage(_appSetting, "Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation --version 10.0.4", _appSetting.WebUILayerProjectName));
+            log(_cli.AddPackage(_appSetting, "Microsoft.EntityFrameworkCore.Design --version 10.0.4", _appSetting.WebUILayerProjectName));
+            log(_cli.Restore(_appSetting, _appSetting.WebUILayerProjectName));
+            log(_templateRenderer.GenerateStaticFiles(_appSetting, "WebUI", _appSetting.WebUILayerProjectName));
+            log(GenerateSideMenuViewComponent());
+            log(GenerateViewModels());
+            log(GenerateControllers());
+            log(GenerateViews());
+            log(Copywwwroot());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log(ex.Message);
+            return false;
+        }
     }
 
     public string CreateProject()
@@ -36,26 +86,26 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 return "INFO: WebUI layer project already exists.";
 
 
-            RunCommand(_appSetting.SolutionPath, "dotnet", $"new mvc -n {_appSetting.WebUILayerProjectName}");
+            _cli.RunCommand(_appSetting.SolutionPath, "dotnet", $"new mvc -n {_appSetting.WebUILayerProjectName}");
 
             bool isSlnx = File.Exists(Path.Combine(_appSetting.SolutionPath, $"{_appSetting.SolutionName}.slnx"));
 
-            RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.{(isSlnx ? "slnx" : "sln")} add {_appSetting.WebUILayerProjectName}/{_appSetting.WebUILayerProjectName}.csproj");
-            RunCommand(layerPath, "dotnet", $"add reference ../{_appSetting.BusinessLayerProjectName}/{_appSetting.BusinessLayerProjectName}.csproj");
+            _cli.RunCommand(_appSetting.SolutionPath, "dotnet", $"sln {_appSetting.SolutionName}.{(isSlnx ? "slnx" : "sln")} add {_appSetting.WebUILayerProjectName}/{_appSetting.WebUILayerProjectName}.csproj");
+            _cli.RunCommand(layerPath, "dotnet", $"add reference ../{_appSetting.BusinessLayerProjectName}/{_appSetting.BusinessLayerProjectName}.csproj");
 
-            RemoveFile(layerPath, "Program.cs");
-            RemoveFile(layerPath, "appsettings.json");
+            _fs.RemoveFile(layerPath, "Program.cs");
+            _fs.RemoveFile(layerPath, "appsettings.json");
 
             string projectViewsPath = Path.Combine(layerPath, "Views");
-            RemoveFile(projectViewsPath, "_ViewImports.cshtml");
+            _fs.RemoveFile(projectViewsPath, "_ViewImports.cshtml");
 
             string projectViewsSharedPath = Path.Combine(layerPath, "Views", "Shared");
-            RemoveFile(projectViewsSharedPath, "_Layout.cshtml");
-            RemoveFile(projectViewsSharedPath, "_Layout.cshtml.css");
-            RemoveFile(projectViewsSharedPath, "Error.cshtml");
+            _fs.RemoveFile(projectViewsSharedPath, "_Layout.cshtml");
+            _fs.RemoveFile(projectViewsSharedPath, "_Layout.cshtml.css");
+            _fs.RemoveFile(projectViewsSharedPath, "Error.cshtml");
 
-            RemoveFolder(Path.Combine(layerPath, "Models"));
-            RemoveFolder(Path.Combine(layerPath, "Controllers"));
+            _fs.RemoveFolder(Path.Combine(layerPath, "Models"));
+            _fs.RemoveFolder(Path.Combine(layerPath, "Controllers"));
 
             return "OK: WebUI Project Created Successfully";
         }
@@ -96,7 +146,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                     options.Password.RequireUppercase = false;
 
                     options.User.RequireUniqueEmail = false;
-                    options.User.AllowedUserNameCharacters = ""abcçdefgğhiıjklmnoöpqrsştuüvwxyzABCÇDEFGĞHIİJKLMNOÖPQRSŞTUÜVWXYZ0123456789-._@+/*|!,;:()&#?[] "";
+                    options.User.AllowedUserNameCharacters = ""abcÃ§defgÄŸhiÄ±jklmnoÃ¶pqrsÅŸtuÃ¼vwxyzABCÃ‡DEFGÄHIÄ°JKLMNOÃ–PQRSÅTUÃœVWXYZ0123456789-._@+/*|!,;:()&#?[] "";
                 }})
                 .AddEntityFrameworkStores<AppDbContext>()
                 .AddDefaultTokenProviders();
@@ -112,27 +162,27 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         List<Entity> entities = _entityRepository.GetAll();
         entities = entities.OrderBy(e => e.Name).ToList();
 
-        var code = CompilationUnit(
+        var code = _roslyn.CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Mvc",
                 $"{_appSetting.WebUILayerProjectName}.Models.UI",
             ],
-            nspace: NamespaceDeclaration(
+            nspace: _roslyn.NamespaceDeclaration(
                 value: $"{_appSetting.WebUILayerProjectName}.ViewComponents",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: "SideMenuViewComponent",
                         baseTypes: [SyntaxFactory.ParseTypeName("ViewComponent")],
                         members: [
                             GenerateInvokeMethod(entities),
-                            MethodDeclaration(
+                            _roslyn.MethodDeclaration(
                                 modifiers: [SyntaxKind.PrivateKeyword],
                                 returnType: "bool",
                                 name: "HandleActiveMenu",
                                 parameters: [
-                                    ParameterDeclaration("MenuItem", "item"),
-                                    ParameterDeclaration("string", "currentPath")
+                                    _roslyn.ParameterDeclaration("MenuItem", "item"),
+                                    _roslyn.ParameterDeclaration("string", "currentPath")
                                 ],
                                 body: @"
                                     bool isActive = !string.IsNullOrWhiteSpace(item.Path) && (currentPath.Equals(item.Path, StringComparison.OrdinalIgnoreCase) || currentPath.StartsWith(item.Path + ""/"", StringComparison.OrdinalIgnoreCase));
@@ -161,7 +211,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
 
         string folderPathMenuItem = System.IO.Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "ViewComponents");
-        return AddFile(folderPathMenuItem, "SideMenuViewComponent.cs", code.ToFullString());
+        return _fs.AddFile(folderPathMenuItem, "SideMenuViewComponent.cs", code.ToFullString());
     }
 
     private MethodDeclarationSyntax GenerateInvokeMethod(List<Entity> entities)
@@ -170,39 +220,39 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         foreach (Entity entity in entities)
         {
             subMenuItems.Add(
-                ObjectCreation(
+                _roslyn.ObjectCreation(
                     typeName: "MenuItem",
                     members: [
-                        PropertyAssignment(name: "Title", value: $"\"{entity.Name}\""),
-                        PropertyAssignment(name: "Icon", value: "\"<i class=\\\"ki-duotone ki-right text-gray-900 fs-2tx\\\"></i>\""),
-                        PropertyAssignment(name: "Path", value:  $"\"/{entity.Name}/Index\""),
+                        _roslyn.PropertyAssignment(name: "Title", value: $"\"{entity.Name}\""),
+                        _roslyn.PropertyAssignment(name: "Icon", value: "\"<i class=\\\"ki-duotone ki-right text-gray-900 fs-2tx\\\"></i>\""),
+                        _roslyn.PropertyAssignment(name: "Path", value:  $"\"/{entity.Name}/Index\""),
                     ]
                 )
             );
         }
-        var menuItems = LocalDeclaration(
+        var menuItems = _roslyn.LocalDeclaration(
             type: "var",
             name: "menuItems",
-            expression: ObjectCreationCollection(
+            expression: _roslyn.ObjectCreationCollection(
                 typeName: "List<MenuItem>",
                 items: [
-                    ObjectCreation(
+                    _roslyn.ObjectCreation(
                         typeName: "MenuItem",
                         members: [
-                            PropertyAssignment(name: "Title", value: "\"Dashboard\""),
-                            PropertyAssignment(name: "Icon", value: "\"<i class=\\\"ki-duotone ki-element-11 fs-2\\\"><span class=\\\"path1\\\"></span><span class=\\\"path2\\\"></span><span class=\\\"path3\\\"></span><span class=\\\"path4\\\"></span></i>\""),
-                            PropertyAssignment(name: "Path", value: "\"/Home/Index\"")
+                            _roslyn.PropertyAssignment(name: "Title", value: "\"Dashboard\""),
+                            _roslyn.PropertyAssignment(name: "Icon", value: "\"<i class=\\\"ki-duotone ki-element-11 fs-2\\\"><span class=\\\"path1\\\"></span><span class=\\\"path2\\\"></span><span class=\\\"path3\\\"></span><span class=\\\"path4\\\"></span></i>\""),
+                            _roslyn.PropertyAssignment(name: "Path", value: "\"/Home/Index\"")
                         ]
                     ),
-                    ObjectCreation(
+                    _roslyn.ObjectCreation(
                         typeName: "MenuItem",
                         members: [
-                            PropertyAssignment(name: "Title", value: "\"Pages\""),
-                            PropertyAssignment(name: "Icon", value: "\"<i class=\\\"fa-regular fa-folder-open\\\"></i>\""),
-                            PropertyAssignment(name: "GroupName", value: "\"Pages\""),
-                            PropertyAssignment(
+                            _roslyn.PropertyAssignment(name: "Title", value: "\"Pages\""),
+                            _roslyn.PropertyAssignment(name: "Icon", value: "\"<i class=\\\"fa-regular fa-folder-open\\\"></i>\""),
+                            _roslyn.PropertyAssignment(name: "GroupName", value: "\"Pages\""),
+                            _roslyn.PropertyAssignment(
                                 name: "SubMenuItems",
-                                expression: ObjectCreationCollection(
+                                expression: _roslyn.ObjectCreationCollection(
                                     typeName: "List<MenuItem>",
                                     items: [
                                         ..subMenuItems
@@ -215,7 +265,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             )
         );
 
-        return MethodDeclaration(
+        return _roslyn.MethodDeclaration(
             modifiers: [SyntaxKind.PublicKeyword],
             returnType: "IViewComponentResult",
             name: "Invoke",
@@ -245,9 +295,9 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         {
             string folderPath = System.IO.Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Models", "ViewModels", $"{entity.Name}");
 
-            results.Add(AddFile(folderPath, $"{entity.Name}ViewModel.cs", GenerateViewModelIndex(entity)));
-            results.Add(AddFile(folderPath, $"{entity.Name}CreateViewModel.cs", GenerateViewModelCreate(entity)));
-            results.Add(AddFile(folderPath, $"{entity.Name}UpdateViewModel.cs", GenerateViewModelUpdate(entity)));
+            results.Add(_fs.AddFile(folderPath, $"{entity.Name}ViewModel.cs", GenerateViewModelIndex(entity)));
+            results.Add(_fs.AddFile(folderPath, $"{entity.Name}CreateViewModel.cs", GenerateViewModelCreate(entity)));
+            results.Add(_fs.AddFile(folderPath, $"{entity.Name}UpdateViewModel.cs", GenerateViewModelUpdate(entity)));
         }
 
         return string.Join("\n", results);
@@ -267,35 +317,35 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             );
             if (relation == null) continue;
 
-            vmPropList.Add(PropertyDeclaration("SelectList", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+            vmPropList.Add(_roslyn.PropertyDeclaration("SelectList", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
         }
         // FilterModel Prop
         if (filterableFields.Any() || entity.SoftDeletable)
-            vmPropList.Add(PropertyDeclaration($"{entity.Name}FilterModel", "FilterModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true));
+            vmPropList.Add(_roslyn.PropertyDeclaration($"{entity.Name}FilterModel", "FilterModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true));
         #endregion
 
         #region FilterModel Properties
         var filerModelProperties = new List<MemberDeclarationSyntax>();
         foreach (var field in filterableFields)
-            filerModelProperties.Add(PropertyDeclaration($"{field.GetMapedTypeName()}", field.Name, false, [SyntaxKind.PublicKeyword]));
+            filerModelProperties.Add(_roslyn.PropertyDeclaration($"{field.GetMapedTypeName()}", field.Name, false, [SyntaxKind.PublicKeyword]));
         if (entity.SoftDeletable)
-            filerModelProperties.Add(PropertyDeclaration("bool", "IsDeleted", false, [SyntaxKind.PublicKeyword]));
+            filerModelProperties.Add(_roslyn.PropertyDeclaration("bool", "IsDeleted", false, [SyntaxKind.PublicKeyword]));
         #endregion
 
-        var code = CompilationUnit(
+        var code = _roslyn.CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Mvc.Rendering",
                 $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
             ],
-            nspace: NamespaceDeclaration(
+            nspace: _roslyn.NamespaceDeclaration(
                 value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: $"{entity.Name}ViewModel",
                         members: [..vmPropList]
                     ),
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: $"{entity.Name}FilterModel",
                         members: [..filerModelProperties]
@@ -315,7 +365,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         // Property List
         var propertyList = new List<MemberDeclarationSyntax>
         {
-            PropertyDeclaration(createModelType, "CreateModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true)
+            _roslyn.PropertyDeclaration(createModelType, "CreateModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true)
         };
 
         // SelectList Props
@@ -329,7 +379,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 );
                 if (relation == null) continue;
 
-                propertyList.Add(PropertyDeclaration("SelectList", dtoField.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration("SelectList", dtoField.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
             }
         }
         else
@@ -343,19 +393,19 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 );
                 if (relation == null) continue;
 
-                propertyList.Add(PropertyDeclaration("SelectList", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration("SelectList", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
             }
         }
 
-        return CompilationUnit(
+        return _roslyn.CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Mvc.Rendering",
                 isThereCreateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands" : string.Empty,
             ],
-            nspace: NamespaceDeclaration(
+            nspace: _roslyn.NamespaceDeclaration(
                 value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: $"{entity.Name}CreateViewModel",
                         members: [.. propertyList]
@@ -373,7 +423,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         // Property List
         var propertyList = new List<MemberDeclarationSyntax>
         {
-            PropertyDeclaration(updateModelType, "UpdateModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true)
+            _roslyn.PropertyDeclaration(updateModelType, "UpdateModel", true, [SyntaxKind.PublicKeyword], earlyInstance: true)
         };
 
         // SelectList Props
@@ -387,7 +437,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 );
                 if (relation == null) continue;
 
-                propertyList.Add(PropertyDeclaration("SelectList?", dtoField.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration("SelectList?", dtoField.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
             }
         }
         else
@@ -401,19 +451,19 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                 );
                 if (relation == null) continue;
 
-                propertyList.Add(PropertyDeclaration("SelectList?", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
+                propertyList.Add(_roslyn.PropertyDeclaration("SelectList?", field.Name.Pluralize(), false, [SyntaxKind.PublicKeyword]));
             }
         }
 
-        return CompilationUnit(
+        return _roslyn.CompilationUnit(
             usings: [
                 "Microsoft.AspNetCore.Mvc.Rendering",
                 isThereUpdateDto ? $"{_appSetting.ModelLayerProjectName}.Dtos.{entity.Name}.Commands" : string.Empty,
             ],
-            nspace: NamespaceDeclaration(
+            nspace: _roslyn.NamespaceDeclaration(
                 value: $"{_appSetting.WebUILayerProjectName}.Models.ViewModels.{entity.Name}",
                 members: [
-                    ClassDeclaration(
+                    _roslyn.ClassDeclaration(
                         modifiers: [SyntaxKind.PublicKeyword],
                         name: $"{entity.Name}UpdateViewModel",
                         members: [.. propertyList]
@@ -553,15 +603,15 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             #region Fields
             List<FieldDeclarationSyntax> fields =
             [
-                .. relationalEntities.Select(e => FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{e}Service", $"_{e.ToCamelCase()}Service")),
+                .. relationalEntities.Select(e => _roslyn.FieldDeclaration([SyntaxKind.PrivateKeyword, SyntaxKind.ReadOnlyKeyword], $"I{e}Service", $"_{e.ToCamelCase()}Service")),
             ];
             #endregion
 
             #region Constructor Parameters
             List<ParameterSyntax> constructorParams =
             [
-                ParameterDeclaration($"ILogger<{entity.Name}Controller>", "logger"),
-                .. relationalEntities.Select(e => ParameterDeclaration($"I{e}Service", $"{e.ToCamelCase()}Service"))
+                _roslyn.ParameterDeclaration($"ILogger<{entity.Name}Controller>", "logger"),
+                .. relationalEntities.Select(e => _roslyn.ParameterDeclaration($"I{e}Service", $"{e.ToCamelCase()}Service"))
             ];
             #endregion
 
@@ -569,22 +619,22 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             #region Constructor Statement Expressions
             List<StatementSyntax> constructorStatements =
             [
-                .. relationalEntities.Select(e => StatementExpression($"_{e.ToCamelCase()}Service", $"{e.ToCamelCase()}Service"))
+                .. relationalEntities.Select(e => _roslyn.StatementExpression($"_{e.ToCamelCase()}Service", $"{e.ToCamelCase()}Service"))
             ];
             #endregion
 
-            var code_controller = CompilationUnit(
+            var code_controller = _roslyn.CompilationUnit(
                 usings: [.. usings],
-                nspace: NamespaceDeclaration(
+                nspace: _roslyn.NamespaceDeclaration(
                     value: $"{_appSetting.WebUILayerProjectName}.Controllers",
                     members: [
-                        ClassDeclaration(
+                        _roslyn.ClassDeclaration(
                             name: $"{entity.Name}Controller",
                             modifiers: [SyntaxKind.PublicKeyword],
                             baseTypes: [SyntaxFactory.ParseTypeName("BaseController")],
                             members: [
                                 ..fields,
-                                ConstructorDeclaration(
+                                _roslyn.ConstructorDeclaration(
                                     modifiers: [SyntaxKind.PublicKeyword],
                                     name: $"{entity.Name}Controller",
                                     parameters: [
@@ -601,7 +651,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             );
 
             string folderPath = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Controllers");
-            results.Add(AddFile(folderPath, $"{entity.Name}Controller.cs", code_controller.ToFullString()));
+            results.Add(_fs.AddFile(folderPath, $"{entity.Name}Controller.cs", code_controller.ToFullString()));
         }
 
         return string.Join("\n", results);
@@ -612,14 +662,14 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         var methods = new List<MethodDeclarationSyntax>();
 
         List<Field> uniqueFields = entity.Fields.Where(f => f.IsUnique).OrderBy(f => f.Name).ToList();
-        var uniqueFieldParameters = uniqueFields.Select(f => ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
+        var uniqueFieldParameters = uniqueFields.Select(f => _roslyn.ParameterDeclaration(f.GetMapedTypeName(), f.Name.ToCamelCase(), true)).ToList();
 
         string methodUniqueArgs = string.Join(", ", uniqueFields.Select(f => $"{f.Name.ToCamelCase()}: {f.Name.ToCamelCase()}"));
 
         string serviceName = $"_{entity.Name.ToCamelCase()}Service";
 
         #region INDEX
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Index",
@@ -627,15 +677,15 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             block: SyntaxFactory.Block(
                 new List<StatementSyntax>(
                 [
-                    ..selectableRelations_index.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
-                    LocalDeclaration(
+                    ..selectableRelations_index.Select(sr => _roslyn.LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), _roslyn.ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
+                    _roslyn.LocalDeclaration(
                         type: "var",
                         name: "viewModel",
-                        expression: ObjectCreation(
+                        expression: _roslyn.ObjectCreation(
                             typeName: $"{entity.Name}ViewModel",
                             members: [
                                 ..selectableRelations_index.Select(sr =>
-                                    PropertyAssignment(
+                                    _roslyn.PropertyAssignment(
                                         sr.Key.Pluralize(),
                                         $"{sr.Key.ToCamelCase().Pluralize()}.Data"
                                     )
@@ -643,7 +693,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                             ]
                         )
                     ),
-                    ReturnStatement("View(viewModel)")
+                    _roslyn.ReturnStatement("View(viewModel)")
                 ])
             )
         ));
@@ -651,7 +701,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
         #region CREATE
         var createDto = dtos.FirstOrDefault(f => f.Id == entity.CreateDtoId);
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Create",
@@ -659,29 +709,29 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             block: SyntaxFactory.Block(
                 new List<StatementSyntax>(
                 [
-                    ..selectableRelations_create.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
-                    LocalDeclaration(
+                    ..selectableRelations_create.Select(sr => _roslyn.LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), _roslyn.ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
+                    _roslyn.LocalDeclaration(
                         type: "var",
                         name: "viewModel",
-                        expression: ObjectCreation(
+                        expression: _roslyn.ObjectCreation(
                             typeName: $"{entity.Name}CreateViewModel",
                             members: [
-                                ..selectableRelations_create.Select(sr =>PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
+                                ..selectableRelations_create.Select(sr =>_roslyn.PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
                             ]
                         )
                     ),
-                    ReturnStatement("PartialView(\"./Partials/CreateForm\", viewModel)")
+                    _roslyn.ReturnStatement("PartialView(\"./Partials/CreateForm\", viewModel)")
                 ])
             )
         ));
 
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Create",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true)
+                _roslyn.ParameterDeclaration(createDto?.Name ?? entity.Name, "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.CreateAsync(request);
@@ -692,7 +742,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
         #region UPDATE
         var updateDto = dtos.FirstOrDefault(f => f.Id == entity.UpdateDtoId);
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Update",
@@ -707,30 +757,30 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
                         var result = await {serviceName}.{(updateDto != null ? "GetUpdateModelAsync" : "GetAsync")}({methodUniqueArgs});
                         if (!result.IsSuccess) return ToAction(result);
                     "),
-                    ..selectableRelations_update.Select(sr => LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
-                    LocalDeclaration(
+                    ..selectableRelations_update.Select(sr => _roslyn.LocalDeclaration("var", sr.Key.ToCamelCase().Pluralize(), _roslyn.ExpressionStatement($"_{sr.Value.ToCamelCase()}Service.SelectListAsync()", true))),
+                    _roslyn.LocalDeclaration(
                         type: "var",
                         name: "viewModel",
-                        expression: ObjectCreation(
+                        expression: _roslyn.ObjectCreation(
                             typeName: $"{entity.Name}UpdateViewModel",
                             members: [
-                                PropertyAssignment("UpdateModel", "result.Data"),
-                                ..selectableRelations_update.Select(sr => PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
+                                _roslyn.PropertyAssignment("UpdateModel", "result.Data"),
+                                ..selectableRelations_update.Select(sr => _roslyn.PropertyAssignment(sr.Key.Pluralize(), $"{sr.Key.ToCamelCase().Pluralize()}.Data"))
                             ]
                         )
                     ),
-                    ReturnStatement("PartialView(\"./Partials/UpdateForm\", viewModel)")
+                    _roslyn.ReturnStatement("PartialView(\"./Partials/UpdateForm\", viewModel)")
                 ])
             )
         ));
 
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "Update",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration(updateDto?.Name ?? entity.Name, "updateModel", true)
+                _roslyn.ParameterDeclaration(updateDto?.Name ?? entity.Name, "updateModel", true)
             ],
             body: $@"
                 var result = await {serviceName}.UpdateAsync(updateModel);
@@ -743,14 +793,14 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         var deleteDto = dtos.FirstOrDefault(f => f.Id == entity.DeleteDtoId);
         if (deleteDto != null)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Delete",
                 returnType: "Task<IActionResult>",
                 parameters:
                 [
-                    ParameterDeclaration(deleteDto.Name, "deleteModel", true)
+                    _roslyn.ParameterDeclaration(deleteDto.Name, "deleteModel", true)
                 ],
                 body: $@"
                     var result = await {serviceName}.DeleteAsync(deleteModel);
@@ -760,7 +810,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         }
         else
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Delete",
@@ -780,7 +830,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         #region RESTORE
         if (entity.SoftDeletable)
         {
-            methods.Add(MethodDeclaration(
+            methods.Add(_roslyn.MethodDeclaration(
                 attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpGet"))],
                 modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
                 name: "Restore",
@@ -797,26 +847,26 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         #endregion
 
         #region DATATABLE 
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DatatableClientSide",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true)
+                _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.DatatableClientSideAsync(request);
                 return ToAction(result);
             "
         ));
-        methods.Add(MethodDeclaration(
+        methods.Add(_roslyn.MethodDeclaration(
             attributes: [SyntaxFactory.Attribute(SyntaxFactory.IdentifierName("HttpPost"))],
             modifiers: [SyntaxKind.PublicKeyword, SyntaxKind.AsyncKeyword],
             name: "DatatableServerSide",
             returnType: "Task<IActionResult>",
             parameters: [
-                ParameterDeclaration("DynamicDatatableRequest", "request", true)
+                _roslyn.ParameterDeclaration("DynamicDatatableRequest", "request", true)
             ],
             body: $@"
                 var result = await {serviceName}.DatatableServerSideAsync(request);
@@ -841,9 +891,9 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             string pathView = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Views", entity.Name);
             string pathPartial = Path.Combine(_appSetting.SolutionPath, _appSetting.WebUILayerProjectName, "Views", entity.Name, "Partials");
 
-            results.Add(AddFile(pathView, $"Index.cshtml", IndexHtml(entity)));
-            results.Add(AddFile(pathPartial, $"CreateForm.cshtml", FormHtml(entity, false)));
-            results.Add(AddFile(pathPartial, $"UpdateForm.cshtml", FormHtml(entity, true)));
+            results.Add(_fs.AddFile(pathView, $"Index.cshtml", IndexHtml(entity)));
+            results.Add(_fs.AddFile(pathPartial, $"CreateForm.cshtml", FormHtml(entity, false)));
+            results.Add(_fs.AddFile(pathPartial, $"UpdateForm.cshtml", FormHtml(entity, true)));
         }
         return string.Join("\n", results);
     }
@@ -876,7 +926,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
         {
             int inptType = field.GetVariableGroup(selectableRelations);
             int inptKind = field.GetDatatableConditionKind(inptType);
-            string inptCode = field.CreateInputHTML(inptType);
+            string inptCode = HtmlInputGenerator.CreateInputHTML(field, inptType);
             codeFilterForm.Append(inptCode);
             filterInputs.Add((field.Name, (inptType, inptKind, inptCode)));
         }
@@ -1294,7 +1344,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             foreach (var dtoField in dto!.DtoFields.Where(f => f.SourceField.FieldType.SourceTypeId == (byte)Enums.FieldTypeSourceEnums.Base))
             {
                 int inptType = dtoField.SourceField.GetVariableGroup(selectableRelations);
-                codeFormInputs.Append(dtoField.SourceField.CreateFormInputHTML(inptType, isUpdate ? "UpdateModel" : "CreateModel"));
+                codeFormInputs.Append(HtmlInputGenerator.CreateFormInputHTML(dtoField.SourceField, inptType, isUpdate ? "UpdateModel" : "CreateModel"));
             }
         }
         else
@@ -1314,7 +1364,7 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
             foreach (var field in fieldList.Where(f => f.IsUnique == false))
             {
                 int inptType = field.GetVariableGroup(selectableRelations);
-                codeFormInputs.Append(field.CreateFormInputHTML(inptType, isUpdate ? "UpdateModel" : "CreateModel"));
+                codeFormInputs.Append(HtmlInputGenerator.CreateFormInputHTML(field, inptType, isUpdate ? "UpdateModel" : "CreateModel"));
             }
         }
 
@@ -1345,7 +1395,14 @@ public class NLayerWebUIGenerator : NLayerGeneratorBase
 
         string destPath_assets = Path.GetFullPath(Path.Combine(_appSetting.SolutionPath, $@"{_appSetting.WebUILayerProjectName}\wwwroot"));
 
-        results.Add(CopyDirectory(sourcePath_assets, destPath_assets));
+        results.Add(_fs.CopyDirectory(sourcePath_assets, destPath_assets));
         return "wwwroot generated";
     }
 }
+
+
+
+
+
+
+
