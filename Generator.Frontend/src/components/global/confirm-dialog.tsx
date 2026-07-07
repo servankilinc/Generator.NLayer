@@ -1,0 +1,53 @@
+import {} from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
+
+interface ConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title?: string;
+  description?: string;
+  onConfirm: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'destructive' | 'default';
+}
+
+export default function ConfirmDialog({
+  open,
+  onOpenChange,
+  title = 'Are you sure?',
+  description = 'This action cannot be undone.',
+  onConfirm,
+  confirmLabel = 'Continue',
+  cancelLabel = 'Cancel',
+  variant = 'destructive'
+}: ConfirmDialogProps) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className={variant === 'destructive' ? 'bg-destructive text-white hover:bg-destructive/90' : ''}
+          >
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
