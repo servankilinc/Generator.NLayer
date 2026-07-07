@@ -14,6 +14,9 @@ using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Generator.API.Endpoints;
 using Generator.API.Middleware;
+using Generator.API.Services.AI;
+using Generator.API.Services.AI.Plugins;
+using Microsoft.SemanticKernel;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -98,6 +101,36 @@ builder.Services.AddScoped<Generator.Domain.CodeGenerators.Pipeline.GenerationPi
 
 builder.Services.AddScoped<NLayerGeneratorService>();
 
+// AI Assistant (Semantic Kernel): transient Kernel + scoped plugins so each request
+// works against the active project's scoped DbContext/repositories.
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection(AiOptions.SectionName));
+var aiOptions = builder.Configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
+
+var kernelBuilder = builder.Services.AddKernel();
+var aiHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(aiOptions.RequestTimeoutSeconds) };
+if (aiOptions.IsOpenAI)
+{
+    if (!string.IsNullOrEmpty(aiOptions.Endpoint))
+        kernelBuilder.AddOpenAIChatCompletion(modelId: aiOptions.ModelId, endpoint: new Uri(aiOptions.Endpoint), apiKey: aiOptions.ApiKey, httpClient: aiHttpClient);
+    else
+        kernelBuilder.AddOpenAIChatCompletion(modelId: aiOptions.ModelId, apiKey: aiOptions.ApiKey, httpClient: aiHttpClient);
+}
+else
+{
+#pragma warning disable SKEXP0070
+    aiHttpClient.BaseAddress = new Uri(aiOptions.Endpoint);
+    kernelBuilder.AddOllamaChatCompletion(aiOptions.ModelId, aiHttpClient);
+#pragma warning restore SKEXP0070
+}
+
+builder.Services.AddScoped(sp => KernelPluginFactory.CreateFromType<ProjectBuilderPlugin>("ProjectBuilder", sp));
+builder.Services.AddScoped(sp => KernelPluginFactory.CreateFromType<SettingsPlugin>("SettingsBuilder", sp));
+builder.Services.AddScoped(sp => KernelPluginFactory.CreateFromType<DtoPlugin>("DtoBuilder", sp));
+builder.Services.AddScoped(sp => KernelPluginFactory.CreateFromType<ValidationPlugin>("ValidationBuilder", sp));
+
+builder.Services.AddScoped<ProjectSnapshotService>();
+builder.Services.AddScoped<AiChatService>();
+
 builder.Services.AddSignalR();
 
 var app = builder.Build();
@@ -121,5 +154,6 @@ app.MapDtoEndpoints();
 app.MapValidationEndpoints();
 app.MapAppSettingEndpoints();
 app.MapGenerationEndpoints();
+app.MapAIEndpoints();
 
 app.Run();
